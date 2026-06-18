@@ -293,7 +293,7 @@ const MemoContentDetail = ({ content }) => {
   const parsedLines = parseMemoContentLines(content || "내용 없음");
 
   return (
-    <div className="space-y-2 text-base font-semibold leading-8 text-[var(--text-main)] md:text-lg">
+    <div className="text-base font-semibold leading-8 text-[var(--text-main)] md:text-lg">
       {parsedLines.map((line) => {
         if (line.type === "empty") {
           return <div key={line.id} className="h-3" />;
