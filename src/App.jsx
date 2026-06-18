@@ -280,7 +280,7 @@ const MemoContentPreview = ({ content, maxLines = 4 }) => {
         }
 
         return (
-          <p key={line.id} className="truncate">
+          <p key={line.id} className="whitespace-pre-wrap">
             {line.text}
           </p>
         );
