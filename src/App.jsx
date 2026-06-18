@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 
 const THEME_STORAGE_KEY = "memo-space-theme";
@@ -120,6 +120,19 @@ const LogoutIcon = ({ className = "" }) => (
   </IconBase>
 );
 
+const MoreIcon = ({ className = "" }) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+  >
+    <circle cx="5" cy="12" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="19" cy="12" r="1.8" />
+  </svg>
+);
+
 const normalizeMemoFromDb = (memo) => ({
   id: memo.id,
   title: memo.title || "제목 없음",
@@ -183,6 +196,152 @@ const mergeTags = (...tagGroups) => {
   return merged;
 };
 
+
+const parseMemoContentLines = (value) => {
+  return value.split("\n").map((rawLine, index) => {
+    const trimmedLine = rawLine.trimStart();
+
+    const checkboxMatch = trimmedLine.match(/^- \[( |x|X)\]\s?(.*)$/);
+
+    if (checkboxMatch) {
+      return {
+        id: `${index}-${rawLine}`,
+        type: "checkbox",
+        checked: checkboxMatch[1].toLowerCase() === "x",
+        text: checkboxMatch[2] || "체크 항목",
+      };
+    }
+
+    const bulletMatch = trimmedLine.match(/^[-*]\s+(.*)$/);
+
+    if (bulletMatch) {
+      return {
+        id: `${index}-${rawLine}`,
+        type: "bullet",
+        text: bulletMatch[1],
+      };
+    }
+
+    if (!rawLine.trim()) {
+      return {
+        id: `${index}-${rawLine}`,
+        type: "empty",
+        text: "",
+      };
+    }
+
+    return {
+      id: `${index}-${rawLine}`,
+      type: "text",
+      text: rawLine,
+    };
+  });
+};
+
+const MemoContentPreview = ({ content, maxLines = 4 }) => {
+  const parsedLines = parseMemoContentLines(content || "내용 없음")
+    .filter((line) => line.type !== "empty")
+    .slice(0, maxLines);
+
+  return (
+    <div className="mt-3 space-y-1.5 overflow-hidden text-sm font-semibold leading-6 text-[var(--text-muted)]">
+      {parsedLines.map((line) => {
+        if (line.type === "checkbox") {
+          return (
+            <div key={line.id} className="flex min-w-0 items-start gap-2">
+              <span
+                className={`mt-[5px] grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border ${
+                  line.checked
+                    ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                    : "border-[var(--line)] bg-transparent text-transparent"
+                }`}
+              >
+                <CheckIcon className="h-3 w-3" />
+              </span>
+
+              <span
+                className={`min-w-0 truncate ${
+                  line.checked ? "text-[var(--text-soft)] line-through" : ""
+                }`}
+              >
+                {line.text}
+              </span>
+            </div>
+          );
+        }
+
+        if (line.type === "bullet") {
+          return (
+            <div key={line.id} className="flex min-w-0 items-start gap-2">
+              <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
+              <span className="min-w-0 truncate">{line.text}</span>
+            </div>
+          );
+        }
+
+        return (
+          <p key={line.id} className="truncate">
+            {line.text}
+          </p>
+        );
+      })}
+    </div>
+  );
+};
+
+const MemoContentDetail = ({ content }) => {
+  const parsedLines = parseMemoContentLines(content || "내용 없음");
+
+  return (
+    <div className="space-y-2 text-base font-semibold leading-8 text-[var(--text-main)] md:text-lg">
+      {parsedLines.map((line) => {
+        if (line.type === "empty") {
+          return <div key={line.id} className="h-3" />;
+        }
+
+        if (line.type === "checkbox") {
+          return (
+            <div key={line.id} className="flex min-w-0 items-start gap-3">
+              <span
+                className={`mt-[7px] grid h-5 w-5 shrink-0 place-items-center rounded-[5px] border ${
+                  line.checked
+                    ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                    : "border-[var(--line)] bg-transparent text-transparent"
+                }`}
+              >
+                <CheckIcon className="h-3.5 w-3.5" />
+              </span>
+
+              <span
+                className={`min-w-0 break-words ${
+                  line.checked ? "text-[var(--text-soft)] line-through" : ""
+                }`}
+              >
+                {line.text}
+              </span>
+            </div>
+          );
+        }
+
+        if (line.type === "bullet") {
+          return (
+            <div key={line.id} className="flex min-w-0 items-start gap-3">
+              <span className="mt-[13px] h-2 w-2 shrink-0 rounded-full bg-[var(--accent)]" />
+              <span className="min-w-0 break-words">{line.text}</span>
+            </div>
+          );
+        }
+
+        return (
+          <p key={line.id} className="whitespace-pre-wrap break-words">
+            {line.text}
+          </p>
+        );
+      })}
+    </div>
+  );
+};
+
 function App() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -217,6 +376,9 @@ function App() {
   const [isSidebarRendered, setIsSidebarRendered] = useState(false);
 
   const [isMemoEditorOpen, setIsMemoEditorOpen] = useState(false);
+  const [memoPanelMode, setMemoPanelMode] = useState("edit");
+  const [activeMemo, setActiveMemo] = useState(null);
+  const [isMemoActionsOpen, setIsMemoActionsOpen] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState("");
@@ -224,6 +386,7 @@ function App() {
   const [draftTags, setDraftTags] = useState([]);
   const [tagDraft, setTagDraft] = useState("");
   const [draftIsPinned, setDraftIsPinned] = useState(false);
+  const contentInputRef = useRef(null);
 
   const isDark = theme === "dark";
 
@@ -445,6 +608,9 @@ function App() {
 
   const closeMemoEditor = () => {
     setIsMemoEditorOpen(false);
+    setMemoPanelMode("edit");
+    setActiveMemo(null);
+    setIsMemoActionsOpen(false);
     resetEditor();
   };
 
@@ -468,18 +634,41 @@ function App() {
 
   const openCreateEditor = () => {
     resetEditor();
+    setActiveMemo(null);
+    setMemoPanelMode("edit");
+    setIsMemoActionsOpen(false);
     setIsMemoEditorOpen(true);
     closeSidebar();
   };
 
-  const openEditEditor = (memo) => {
+  const openMemoViewer = (memo) => {
     setEditingId(memo.id);
     setTitle(memo.title);
     setContent(memo.content);
     setDraftTags(memo.tags);
     setTagDraft("");
     setDraftIsPinned(memo.isPinned);
+    setActiveMemo(memo);
+    setMemoPanelMode("view");
+    setIsMemoActionsOpen(false);
     setIsMemoEditorOpen(true);
+  };
+
+  const startEditingActiveMemo = () => {
+    const latestMemo = memos.find((memo) => memo.id === editingId) || activeMemo;
+
+    if (!latestMemo) {
+      return;
+    }
+
+    setTitle(latestMemo.title);
+    setContent(latestMemo.content);
+    setDraftTags(latestMemo.tags);
+    setTagDraft("");
+    setDraftIsPinned(latestMemo.isPinned);
+    setActiveMemo(latestMemo);
+    setMemoPanelMode("edit");
+    setIsMemoActionsOpen(false);
   };
 
   const handleAuthSubmit = async (event) => {
@@ -585,6 +774,35 @@ function App() {
     setDraftTags((prev) => prev.filter((tag) => tag !== targetTag));
   };
 
+  const insertContentSnippet = (snippet) => {
+    const textarea = contentInputRef.current;
+
+    if (!textarea) {
+      setContent((prev) => {
+        const needsLineBreak = prev && !prev.endsWith("\n");
+        return `${prev}${needsLineBreak ? "\n" : ""}${snippet}`;
+      });
+
+      return;
+    }
+
+    const start = textarea.selectionStart ?? content.length;
+    const end = textarea.selectionEnd ?? content.length;
+    const before = content.slice(0, start);
+    const after = content.slice(end);
+    const needsLineBreakBefore = before && !before.endsWith("\n");
+    const insertion = `${needsLineBreakBefore ? "\n" : ""}${snippet}`;
+    const nextContent = `${before}${insertion}${after}`;
+    const nextCursorPosition = before.length + insertion.length;
+
+    setContent(nextContent);
+
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    });
+  };
+
   const handleSubmitMemo = async (event) => {
     event.preventDefault();
 
@@ -688,9 +906,9 @@ function App() {
   };
 
   const handleTogglePin = async (memo, event) => {
-    event.stopPropagation();
+    event?.stopPropagation?.();
 
-    if (!user) {
+    if (!user || !memo) {
       return;
     }
 
@@ -703,6 +921,14 @@ function App() {
         )
       )
     );
+
+    setActiveMemo((prev) =>
+      prev?.id === memo.id ? { ...prev, isPinned: nextIsPinned } : prev
+    );
+
+    if (editingId === memo.id) {
+      setDraftIsPinned(nextIsPinned);
+    }
 
     try {
       const { data, error } = await supabase
@@ -728,6 +954,14 @@ function App() {
           )
         )
       );
+
+      setActiveMemo((prev) =>
+        prev?.id === updatedMemo.id ? updatedMemo : prev
+      );
+
+      if (editingId === updatedMemo.id) {
+        setDraftIsPinned(updatedMemo.isPinned);
+      }
     } catch (error) {
       console.error(error);
 
@@ -738,6 +972,14 @@ function App() {
           )
         )
       );
+
+      setActiveMemo((prev) =>
+        prev?.id === memo.id ? { ...prev, isPinned: memo.isPinned } : prev
+      );
+
+      if (editingId === memo.id) {
+        setDraftIsPinned(memo.isPinned);
+      }
 
       alert(error.message || "고정 상태를 변경하지 못했어요.");
     }
@@ -1172,11 +1414,11 @@ function App() {
                   key={memo.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => openEditEditor(memo)}
+                  onClick={() => openMemoViewer(memo)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      openEditEditor(memo);
+                      openMemoViewer(memo);
                     }
                   }}
                   className={`group flex min-h-[168px] cursor-pointer flex-col rounded-[18px] border bg-[var(--card-bg)] p-4 outline-none transition hover:-translate-y-0.5 hover:shadow-[0_14px_36px_var(--shadow)] focus:border-[var(--accent)] sm:min-h-[170px] sm:rounded-[14px] ${
@@ -1205,9 +1447,7 @@ function App() {
                     </button>
                   </div>
 
-                  <p className="mt-3 overflow-hidden whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-[var(--text-muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
-                    {memo.content || "내용 없음"}
-                  </p>
+                  <MemoContentPreview content={memo.content} maxLines={4} />
 
                   <div className="mt-auto flex items-end gap-2 pt-4">
                     <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
@@ -1243,113 +1483,253 @@ function App() {
             type="button"
             onClick={closeMemoEditor}
             className="absolute inset-0 max-md:hidden"
-            aria-label="메모 에디터 닫기"
+            aria-label="메모 패널 닫기"
           />
 
-          <form
-            onSubmit={handleSubmitMemo}
-            className="relative flex h-[520px] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[390px] md:rounded-[14px]"
-          >
-            <div className="flex items-center gap-3 border-b border-transparent px-5 pt-5 max-md:h-[72px] max-md:border-[var(--line)] max-md:pt-0">
-              <button
-                type="button"
-                onClick={closeMemoEditor}
-                className="hidden h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] max-md:grid"
-                aria-label="뒤로"
-              >
-                <CloseIcon className="h-5 w-5" />
-              </button>
+          {memoPanelMode === "view" && activeMemo ? (
+            <section className="relative flex h-[560px] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[430px] md:rounded-[14px]">
+              <div className="relative flex items-center gap-3 border-b border-[var(--line)] px-5 max-md:h-[72px] md:py-4">
+                <button
+                  type="button"
+                  onClick={closeMemoEditor}
+                  className="hidden h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] max-md:grid"
+                  aria-label="뒤로"
+                >
+                  <CloseIcon className="h-5 w-5" />
+                </button>
 
-              <input
-                type="text"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="제목"
-                className="min-w-0 flex-1 bg-transparent text-xl font-bold tracking-[-0.04em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
-              />
-
-              <button
-                type="button"
-                onClick={() => setDraftIsPinned((prev) => !prev)}
-                className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
-                  draftIsPinned
-                    ? "bg-[var(--accent)] text-white"
-                    : "text-[var(--accent)] hover:bg-[var(--input-bg)]"
-                }`}
-                aria-label={draftIsPinned ? "고정 해제" : "상단 고정"}
-                title={draftIsPinned ? "고정 해제" : "상단 고정"}
-              >
-                <PinIcon className="h-5 w-5" filled={draftIsPinned} />
-              </button>
-
-              <button
-                type="button"
-                onClick={closeMemoEditor}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] max-md:hidden"
-                aria-label="닫기"
-              >
-                <CloseIcon className="h-5 w-5" />
-              </button>
-            </div>
-
-            <textarea
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder="메모 내용을 입력하세요..."
-              className="mt-5 flex-1 resize-none bg-transparent px-5 text-base font-semibold leading-8 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] max-md:mt-0 max-md:px-5 max-md:py-5 md:text-lg"
-            />
-
-            <div className="border-t border-[var(--line)] px-5 py-4 max-md:pb-[calc(16px+env(safe-area-inset-bottom))]">
-              <div className="flex items-center gap-2">
-                <TagIcon className="h-5 w-5 shrink-0 text-[var(--text-muted)]" />
-
-                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-                  {draftTags.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => removeDraftTag(tag)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-sm font-bold text-[var(--accent-soft-text)]"
-                    >
-                      #{tag}
-                      <CloseIcon className="h-3.5 w-3.5" />
-                    </button>
-                  ))}
-
-                  <input
-                    type="text"
-                    value={tagDraft}
-                    onChange={handleTagDraftChange}
-                    onKeyDown={handleTagDraftKeyDown}
-                    onBlur={() => addTagsFromValue(tagDraft)}
-                    placeholder="태그 추가..."
-                    className="h-9 min-w-[120px] flex-1 bg-transparent text-sm font-semibold text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)]"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-end gap-3">
-                {editingId && (
-                  <button
-                    type="button"
-                    onClick={handleDeleteMemo}
-                    className="grid h-10 w-10 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
-                    aria-label="삭제"
-                  >
-                    <TrashIcon className="h-5 w-5" />
-                  </button>
-                )}
+                <h1 className="min-w-0 flex-1 truncate text-xl font-bold tracking-[-0.02em] text-[var(--text-main)] md:text-lg">
+                  {activeMemo.title}
+                </h1>
 
                 <button
-                  type="submit"
-                  className="inline-flex h-11 items-center gap-2 rounded-[12px] bg-[var(--accent)] px-5 text-sm font-bold text-white transition hover:bg-[var(--accent-strong)]"
+                  type="button"
+                  onClick={(event) => handleTogglePin(activeMemo, event)}
+                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
+                    activeMemo.isPinned
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--accent)] hover:bg-[var(--input-bg)]"
+                  }`}
+                  aria-label={activeMemo.isPinned ? "고정 해제" : "상단 고정"}
+                  title={activeMemo.isPinned ? "고정 해제" : "상단 고정"}
                 >
-                  <CheckIcon className="h-4 w-4" />
-                  저장
+                  <PinIcon className="h-5 w-5" filled={activeMemo.isPinned} />
+                </button>
+
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsMemoActionsOpen((prev) => !prev)}
+                    className="grid h-10 w-10 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
+                    aria-label="메모 메뉴 열기"
+                    title="메모 메뉴"
+                  >
+                    <MoreIcon className="h-5 w-5" />
+                  </button>
+
+                  {isMemoActionsOpen && (
+                    <div className="absolute right-0 top-12 z-10 w-36 overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--card-bg)] p-1 shadow-[0_16px_40px_var(--shadow)]">
+                      <button
+                        type="button"
+                        onClick={startEditingActiveMemo}
+                        className="flex h-10 w-full items-center rounded-[10px] px-3 text-left text-sm font-bold text-[var(--text-main)] transition hover:bg-[var(--input-bg)]"
+                      >
+                        수정하기
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMemoActionsOpen(false);
+                          handleDeleteMemo();
+                        }}
+                        className="flex h-10 w-full items-center rounded-[10px] px-3 text-left text-sm font-bold text-red-500 transition hover:bg-red-500/10"
+                      >
+                        삭제하기
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeMemoEditor}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] max-md:hidden"
+                  aria-label="닫기"
+                >
+                  <CloseIcon className="h-5 w-5" />
                 </button>
               </div>
-            </div>
-          </form>
+
+              <div
+                className="flex-1 overflow-y-auto px-5 py-5"
+                onClick={() => setIsMemoActionsOpen(false)}
+              >
+                <MemoContentDetail content={activeMemo.content} />
+              </div>
+
+              <div className="border-t border-[var(--line)] px-5 py-4 max-md:pb-[calc(16px+env(safe-area-inset-bottom))]">
+                <div className="flex items-center gap-2">
+                  <TagIcon className="h-5 w-5 shrink-0 text-[var(--text-muted)]" />
+
+                  <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+                    {activeMemo.tags.length > 0 ? (
+                      activeMemo.tags.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => handleTagClick(tag)}
+                          className="inline-flex items-center rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-sm font-bold text-[var(--accent-soft-text)]"
+                        >
+                          #{tag}
+                        </button>
+                      ))
+                    ) : (
+                      <span className="text-sm font-semibold text-[var(--text-soft)]">
+                        태그 없음
+                      </span>
+                    )}
+                  </div>
+
+                  <span className="shrink-0 text-xs font-bold text-[var(--text-soft)]">
+                    {formatRelativeTime(activeMemo.updatedAt)}
+                  </span>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <form
+              onSubmit={handleSubmitMemo}
+              className="relative flex h-[520px] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[390px] md:rounded-[14px]"
+            >
+              <div className="flex items-center gap-3 border-b border-transparent px-5 pt-5 max-md:h-[72px] max-md:border-[var(--line)] max-md:pt-0">
+                <button
+                  type="button"
+                  onClick={closeMemoEditor}
+                  className="hidden h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] max-md:grid"
+                  aria-label="뒤로"
+                >
+                  <CloseIcon className="h-5 w-5" />
+                </button>
+
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="제목"
+                  className="min-w-0 flex-1 bg-transparent text-xl font-bold tracking-[-0.04em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setDraftIsPinned((prev) => !prev)}
+                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
+                    draftIsPinned
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--accent)] hover:bg-[var(--input-bg)]"
+                  }`}
+                  aria-label={draftIsPinned ? "고정 해제" : "상단 고정"}
+                  title={draftIsPinned ? "고정 해제" : "상단 고정"}
+                >
+                  <PinIcon className="h-5 w-5" filled={draftIsPinned} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={closeMemoEditor}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] max-md:hidden"
+                  aria-label="닫기"
+                >
+                  <CloseIcon className="h-5 w-5" />
+                </button>
+              </div>
+
+              <textarea
+                ref={contentInputRef}
+                value={content}
+                onChange={(event) => setContent(event.target.value)}
+                placeholder="메모 내용을 입력하세요..."
+                className="mt-5 flex-1 resize-none bg-transparent px-5 text-base font-semibold leading-8 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] max-md:mt-0 max-md:px-5 max-md:py-5 md:text-lg"
+              />
+
+              <div className="border-t border-[var(--line)] px-5 py-4 max-md:pb-[calc(16px+env(safe-area-inset-bottom))]">
+                <div className="mb-3 flex gap-2 overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={() => insertContentSnippet("- ")}
+                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
+                    • 불릿
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => insertContentSnippet("- [ ] ")}
+                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
+                    ☐ 체크박스
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => insertContentSnippet("- [x] ")}
+                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
+                    ☑ 완료
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <TagIcon className="h-5 w-5 shrink-0 text-[var(--text-muted)]" />
+
+                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                    {draftTags.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => removeDraftTag(tag)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-sm font-bold text-[var(--accent-soft-text)]"
+                      >
+                        #{tag}
+                        <CloseIcon className="h-3.5 w-3.5" />
+                      </button>
+                    ))}
+
+                    <input
+                      type="text"
+                      value={tagDraft}
+                      onChange={handleTagDraftChange}
+                      onKeyDown={handleTagDraftKeyDown}
+                      onBlur={() => addTagsFromValue(tagDraft)}
+                      placeholder="태그 추가..."
+                      className="h-9 min-w-[120px] flex-1 bg-transparent text-sm font-semibold text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)]"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center justify-end gap-3">
+                  {editingId && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteMemo}
+                      className="grid h-10 w-10 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
+                      aria-label="삭제"
+                    >
+                      <TrashIcon className="h-5 w-5" />
+                    </button>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="inline-flex h-11 items-center gap-2 rounded-[12px] bg-[var(--accent)] px-5 text-sm font-bold text-white transition hover:bg-[var(--accent-strong)]"
+                  >
+                    <CheckIcon className="h-4 w-4" />
+                    저장
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
         </div>
       )}
     </main>
