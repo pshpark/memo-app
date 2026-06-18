@@ -1,20 +1,121 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
-import { loadFoldersWithDefault } from "./lib/folderService";
 
-const normalizeFolderFromDb = (folder) => ({
-  id: folder.id,
-  name: folder.name,
-  isDefault: folder.is_default,
-  createdAt: folder.created_at,
-});
+const THEME_STORAGE_KEY = "memo-space-theme";
+
+const IconBase = ({ children, className = "", filled = false }) => (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill={filled ? "currentColor" : "none"}
+    stroke={filled ? "none" : "currentColor"}
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    {children}
+  </svg>
+);
+
+const NoteIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="M6 3.5h8.2L19 8.3V20a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 20V5a1.5 1.5 0 0 1 1-1.5Z" />
+    <path d="M14 3.5V8h4.5" />
+  </IconBase>
+);
+
+const SearchIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="m16 16 4 4" />
+  </IconBase>
+);
+
+const PlusIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="M12 5v14" />
+    <path d="M5 12h14" />
+  </IconBase>
+);
+
+const CloseIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="M6 6l12 12" />
+    <path d="M18 6 6 18" />
+  </IconBase>
+);
+
+const CheckIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="m5 13 4 4L19 7" />
+  </IconBase>
+);
+
+const TagIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="M20.5 13.2 13.2 20.5a2 2 0 0 1-2.8 0L3.5 13.6V4h9.6l7.4 7.4a1.9 1.9 0 0 1 0 1.8Z" />
+    <circle cx="8" cy="8" r="1.4" />
+  </IconBase>
+);
+
+const MoonIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="M21 14.4A8 8 0 0 1 9.6 3 7 7 0 1 0 21 14.4Z" />
+  </IconBase>
+);
+
+const SunIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2" />
+    <path d="M12 20v2" />
+    <path d="m4.9 4.9 1.4 1.4" />
+    <path d="m17.7 17.7 1.4 1.4" />
+    <path d="M2 12h2" />
+    <path d="M20 12h2" />
+    <path d="m4.9 19.1 1.4-1.4" />
+    <path d="m17.7 6.3 1.4-1.4" />
+  </IconBase>
+);
+
+const MenuIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="M5 7h14" />
+    <path d="M5 12h14" />
+    <path d="M5 17h14" />
+  </IconBase>
+);
+
+const TrashIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="M4 7h16" />
+    <path d="M10 11v6" />
+    <path d="M14 11v6" />
+    <path d="M6 7l1 14h10l1-14" />
+    <path d="M9 7V4h6v3" />
+  </IconBase>
+);
+
+const PinIcon = ({ className = "" }) => (
+  <IconBase className={className} filled>
+    <path d="M14.9 2.6a1 1 0 0 0-1.4 0l-.8.8a1 1 0 0 0-.1 1.3l.3.4-4.1 4.1-1-.3a1.5 1.5 0 0 0-1.5.4l-.5.5a1 1 0 0 0 0 1.4l3 3-4.1 4.1a1 1 0 1 0 1.4 1.4l4.1-4.1 3 3a1 1 0 0 0 1.4 0l.5-.5a1.5 1.5 0 0 0 .4-1.5l-.3-1 4.1-4.1.4.3a1 1 0 0 0 1.3-.1l.8-.8a1 1 0 0 0 0-1.4l-6.9-6.8Z" />
+  </IconBase>
+);
+
+const LogoutIcon = ({ className = "" }) => (
+  <IconBase className={className}>
+    <path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10" />
+    <path d="M15 7l5 5-5 5" />
+    <path d="M20 12H9" />
+  </IconBase>
+);
 
 const normalizeMemoFromDb = (memo) => ({
   id: memo.id,
   title: memo.title || "제목 없음",
   content: memo.content || "",
   tags: Array.isArray(memo.tags) ? memo.tags : [],
-  folderId: memo.folder_id,
   createdAt: memo.created_at,
   updatedAt: memo.updated_at || memo.created_at,
 });
@@ -44,6 +145,30 @@ const parseTags = (value) => {
     });
 };
 
+const mergeTags = (...tagGroups) => {
+  const seen = new Set();
+  const merged = [];
+
+  tagGroups.flat().forEach((tag) => {
+    const normalizedTag = tag.trim().replace(/^#+/, "");
+
+    if (!normalizedTag) {
+      return;
+    }
+
+    const key = normalizedTag.toLowerCase();
+
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    merged.push(normalizedTag);
+  });
+
+  return merged;
+};
+
 function App() {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
@@ -58,23 +183,101 @@ function App() {
   const [dataError, setDataError] = useState("");
 
   const [memos, setMemos] = useState([]);
-  const [folders, setFolders] = useState([]);
 
-  const [pageMode, setPageMode] = useState("dashboard");
-  const [selectedMemoId, setSelectedMemoId] = useState(null);
-  const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
 
-  const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
-  const [tagInput, setTagInput] = useState("");
-  const [folderId, setFolderId] = useState("");
-  const [folderName, setFolderName] = useState("");
-  const [isFolderFormOpen, setIsFolderFormOpen] = useState(false);
+    if (savedTheme === "light" || savedTheme === "dark") {
+      return savedTheme;
+    }
+
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  });
 
   const [search, setSearch] = useState("");
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [activeTag, setActiveTag] = useState("all");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
+
   const [editingId, setEditingId] = useState(null);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [draftTags, setDraftTags] = useState([]);
+  const [tagDraft, setTagDraft] = useState("");
+
+  const isDark = theme === "dark";
+
+  const themeVars = useMemo(
+    () =>
+      isDark
+        ? {
+            "--app-bg": "#0D1822",
+            "--sidebar-bg": "#13212D",
+            "--panel-bg": "#101B25",
+            "--card-bg": "#152431",
+            "--modal-bg": "#152431",
+            "--input-bg": "#1B2D3C",
+            "--text-main": "#EAF2FA",
+            "--text-muted": "#9FB0C0",
+            "--text-soft": "#6F8191",
+            "--line": "#294050",
+            "--accent": "#63B3ED",
+            "--accent-strong": "#46A3E8",
+            "--accent-deep": "#0F65A8",
+            "--accent-soft": "#173D5C",
+            "--accent-soft-text": "#8DD0FF",
+            "--overlay": "rgba(2, 8, 15, 0.66)",
+            "--shadow": "rgba(0, 0, 0, 0.26)",
+          }
+        : {
+            "--app-bg": "#F4F8FC",
+            "--sidebar-bg": "#EAF1F7",
+            "--panel-bg": "#F4F8FC",
+            "--card-bg": "#FFFFFF",
+            "--modal-bg": "#FFFFFF",
+            "--input-bg": "#EEF5FB",
+            "--text-main": "#17202A",
+            "--text-muted": "#65768A",
+            "--text-soft": "#A2AFBC",
+            "--line": "#D5E0EA",
+            "--accent": "#1B66A9",
+            "--accent-strong": "#155890",
+            "--accent-deep": "#0E4F86",
+            "--accent-soft": "#DDF0FF",
+            "--accent-soft-text": "#1474B8",
+            "--overlay": "rgba(17, 24, 39, 0.26)",
+            "--shadow": "rgba(22, 35, 50, 0.14)",
+          },
+    [isDark]
+  );
+
+  useEffect(() => {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+
+    const themeColor = isDark ? "#0D1822" : "#F4F8FC";
+    let metaTheme = document.querySelector("meta[name='theme-color']");
+
+    if (!metaTheme) {
+      metaTheme = document.createElement("meta");
+      metaTheme.setAttribute("name", "theme-color");
+      document.head.appendChild(metaTheme);
+    }
+
+    metaTheme.setAttribute("content", themeColor);
+    document.documentElement.style.backgroundColor = themeColor;
+    document.body.style.backgroundColor = themeColor;
+  }, [theme, isDark]);
+
+  useEffect(() => {
+    const shouldLockScroll = isMemoModalOpen || isSidebarOpen;
+    document.body.style.overflow = shouldLockScroll ? "hidden" : "";
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMemoModalOpen, isSidebarOpen]);
 
   useEffect(() => {
     let mounted = true;
@@ -106,87 +309,7 @@ function App() {
     };
   }, []);
 
-  const defaultFolder = useMemo(() => {
-    return folders.find((folder) => folder.isDefault) || folders[0] || null;
-  }, [folders]);
-
-  const folderMap = useMemo(() => {
-    return folders.reduce((map, folder) => {
-      map[folder.id] = folder;
-      return map;
-    }, {});
-  }, [folders]);
-
-  const selectedMemo = useMemo(() => {
-    return memos.find((memo) => memo.id === selectedMemoId);
-  }, [memos, selectedMemoId]);
-
-  const selectedFolder = useMemo(() => {
-    if (!selectedFolderId) {
-      return null;
-    }
-
-    return folders.find((folder) => folder.id === selectedFolderId) || null;
-  }, [folders, selectedFolderId]);
-
-  const recentMemo = memos[0];
-
-  const allTags = useMemo(() => {
-    const tagSet = new Set();
-
-    memos.forEach((memo) => {
-      memo.tags.forEach((tag) => tagSet.add(tag));
-    });
-
-    return Array.from(tagSet);
-  }, [memos]);
-
-  const todayMemoCount = useMemo(() => {
-    const today = new Date().toDateString();
-
-    return memos.filter((memo) => {
-      return new Date(memo.createdAt).toDateString() === today;
-    }).length;
-  }, [memos]);
-
-  const memoMatchesFilters = useCallback(
-    (memo) => {
-      const keyword = search.trim().toLowerCase();
-
-      const matchesSearch =
-        !keyword ||
-        memo.title.toLowerCase().includes(keyword) ||
-        memo.content.toLowerCase().includes(keyword) ||
-        memo.tags.some((tag) => tag.toLowerCase().includes(keyword));
-
-      const matchesTag = activeTag === "all" || memo.tags.includes(activeTag);
-
-      return matchesSearch && matchesTag;
-    },
-    [search, activeTag]
-  );
-
-  const folderMemoCounts = useMemo(() => {
-    return folders.reduce((counts, folder) => {
-      counts[folder.id] = memos.filter(
-        (memo) => memo.folderId === folder.id && memoMatchesFilters(memo)
-      ).length;
-
-      return counts;
-    }, {});
-  }, [folders, memos, memoMatchesFilters]);
-
-  const filteredMemos = useMemo(() => {
-    if (!selectedFolderId) {
-      return [];
-    }
-
-    return memos.filter(
-      (memo) => memo.folderId === selectedFolderId && memoMatchesFilters(memo)
-    );
-  }, [memos, selectedFolderId, memoMatchesFilters]);
-
-  const loadWorkspaceData = useCallback(
+  const loadMemos = useCallback(
     async (targetUser = user) => {
       if (!targetUser) {
         return;
@@ -196,51 +319,17 @@ function App() {
       setDataError("");
 
       try {
-        const folderRows = await loadFoldersWithDefault(targetUser.id);
-        const nextFolders = folderRows.map(normalizeFolderFromDb);
-        const nextDefaultFolder =
-          nextFolders.find((folder) => folder.isDefault) || nextFolders[0];
-
-        const { data: memoRows, error: memoError } = await supabase
+        const { data, error } = await supabase
           .from("memos")
           .select("*")
           .eq("user_id", targetUser.id)
           .order("updated_at", { ascending: false });
 
-        if (memoError) {
-          throw memoError;
+        if (error) {
+          throw error;
         }
 
-        const nextMemos = sortMemosByUpdatedAt(
-          (memoRows || []).map(normalizeMemoFromDb)
-        );
-
-        setFolders(nextFolders);
-        setMemos(nextMemos);
-
-        setFolderId((prev) => {
-          const hasPreviousFolder = nextFolders.some(
-            (folder) => folder.id === prev
-          );
-
-          if (hasPreviousFolder) {
-            return prev;
-          }
-
-          return nextDefaultFolder?.id || "";
-        });
-
-        setSelectedFolderId((prev) => {
-          if (!prev) {
-            return prev;
-          }
-
-          const hasSelectedFolder = nextFolders.some(
-            (folder) => folder.id === prev
-          );
-
-          return hasSelectedFolder ? prev : null;
-        });
+        setMemos(sortMemosByUpdatedAt((data || []).map(normalizeMemoFromDb)));
       } catch (error) {
         console.error(error);
         setDataError(error.message || "데이터를 불러오지 못했어요.");
@@ -254,56 +343,103 @@ function App() {
   useEffect(() => {
     if (!user) {
       setMemos([]);
-      setFolders([]);
-      setSelectedMemoId(null);
-      setSelectedFolderId(null);
-      setPageMode("dashboard");
+      setSearch("");
+      setActiveTag("all");
       return;
     }
 
-    loadWorkspaceData(user);
-  }, [user, loadWorkspaceData]);
+    loadMemos(user);
+  }, [user, loadMemos]);
+
+  const tagStats = useMemo(() => {
+    const countMap = new Map();
+
+    memos.forEach((memo) => {
+      memo.tags.forEach((tag) => {
+        countMap.set(tag, (countMap.get(tag) || 0) + 1);
+      });
+    });
+
+    return Array.from(countMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, "ko-KR"));
+  }, [memos]);
+
+  const filteredMemos = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+
+    return memos.filter((memo) => {
+      const matchesSearch =
+        !keyword ||
+        memo.title.toLowerCase().includes(keyword) ||
+        memo.content.toLowerCase().includes(keyword) ||
+        memo.tags.some((tag) => tag.toLowerCase().includes(keyword));
+
+      const matchesTag = activeTag === "all" || memo.tags.includes(activeTag);
+
+      return matchesSearch && matchesTag;
+    });
+  }, [memos, search, activeTag]);
 
   useEffect(() => {
-    if (activeTag !== "all" && !allTags.includes(activeTag)) {
+    if (activeTag !== "all" && !tagStats.some((tag) => tag.name === activeTag)) {
       setActiveTag("all");
     }
-  }, [activeTag, allTags]);
+  }, [activeTag, tagStats]);
 
-  useEffect(() => {
-    if (pageMode === "detail" && selectedMemoId && !selectedMemo) {
-      setSelectedMemoId(null);
-      setPageMode(selectedFolderId ? "folder" : "dashboard");
-    }
-  }, [pageMode, selectedMemoId, selectedMemo, selectedFolderId]);
-
-  useEffect(() => {
-    if (selectedFolderId && !folderMap[selectedFolderId]) {
-      setSelectedFolderId(null);
-      setPageMode("dashboard");
-    }
-  }, [selectedFolderId, folderMap]);
-
-  useEffect(() => {
-    if (!folderId && defaultFolder) {
-      setFolderId(defaultFolder.id);
-    }
-  }, [folderId, defaultFolder]);
-
-  const resetForm = () => {
+  const resetEditor = () => {
+    setEditingId(null);
     setTitle("");
     setContent("");
-    setTagInput("");
-    setFolderId(defaultFolder?.id || folders[0]?.id || "");
-    setEditingId(null);
+    setDraftTags([]);
+    setTagDraft("");
+  };
+
+  const closeMemoModal = () => {
+    setIsMemoModalOpen(false);
+    resetEditor();
+  };
+
+  useEffect(() => {
+    if (!isMemoModalOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        closeMemoModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMemoModalOpen]);
+
+  const openCreateModal = () => {
+    resetEditor();
+    setIsMemoModalOpen(true);
+    setIsSidebarOpen(false);
+  };
+
+  const openEditModal = (memo) => {
+    setEditingId(memo.id);
+    setTitle(memo.title);
+    setContent(memo.content);
+    setDraftTags(memo.tags);
+    setTagDraft("");
+    setIsMemoModalOpen(true);
   };
 
   const handleAuthSubmit = async (event) => {
     event.preventDefault();
 
     const email = authEmail.trim();
+    const password = authPassword.trim();
 
-    if (!email || !authPassword.trim()) {
+    if (!email || !password) {
       setAuthMessage("이메일과 비밀번호를 입력해 주세요.");
       return;
     }
@@ -315,7 +451,7 @@ function App() {
       if (authMode === "signIn") {
         const { error } = await supabase.auth.signInWithPassword({
           email,
-          password: authPassword,
+          password,
         });
 
         if (error) {
@@ -327,7 +463,7 @@ function App() {
       } else {
         const { data, error } = await supabase.auth.signUp({
           email,
-          password: authPassword,
+          password,
         });
 
         if (error) {
@@ -357,279 +493,50 @@ function App() {
     setSession(null);
     setUser(null);
     setMemos([]);
-    setFolders([]);
-    setSelectedMemoId(null);
-    setSelectedFolderId(null);
-    setPageMode("dashboard");
+    setSearch("");
+    setActiveTag("all");
+    setIsSidebarOpen(false);
+    closeMemoModal();
   };
 
-  const openCreatePage = (targetFolderId = null) => {
-    resetForm();
+  const addTagsFromValue = (value) => {
+    const nextTags = parseTags(value);
 
-    const nextFolderId = targetFolderId || defaultFolder?.id || folders[0]?.id;
-
-    if (nextFolderId) {
-      setFolderId(nextFolderId);
-    }
-
-    setSelectedMemoId(null);
-
-    if (targetFolderId) {
-      setSelectedFolderId(targetFolderId);
-    }
-
-    setPageMode("editor");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const openEditPage = (memo, event) => {
-    event?.stopPropagation();
-
-    setTitle(memo.title);
-    setContent(memo.content);
-    setTagInput(memo.tags.join(", "));
-    setFolderId(memo.folderId || defaultFolder?.id || folders[0]?.id || "");
-    setEditingId(memo.id);
-    setSelectedMemoId(memo.id);
-    setSelectedFolderId(memo.folderId || null);
-    setPageMode("editor");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const openDetailPage = (memoId) => {
-    const memo = memos.find((item) => item.id === memoId);
-
-    if (memo) {
-      setSelectedFolderId(memo.folderId || null);
-    }
-
-    setSelectedMemoId(memoId);
-    setPageMode("detail");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const openFolderPage = (targetFolderId) => {
-    setSelectedFolderId(targetFolderId);
-    setPageMode("folder");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const closeEditorPage = () => {
-    const shouldReturnDetail = Boolean(editingId && selectedMemoId);
-
-    resetForm();
-
-    if (shouldReturnDetail) {
-      setPageMode("detail");
+    if (nextTags.length === 0) {
       return;
     }
 
-    if (selectedFolderId) {
-      setPageMode("folder");
-      return;
-    }
-
-    setPageMode("dashboard");
+    setDraftTags((prev) => mergeTags(prev, nextTags));
+    setTagDraft("");
   };
 
-  const closeDetailPage = () => {
-    setSelectedMemoId(null);
+  const handleTagDraftChange = (event) => {
+    const value = event.target.value;
 
-    if (selectedMemo?.folderId) {
-      setSelectedFolderId(selectedMemo.folderId);
-      setPageMode("folder");
+    if (value.includes(",")) {
+      addTagsFromValue(value);
       return;
     }
 
-    setPageMode("dashboard");
+    setTagDraft(value.replace(/^#+/, ""));
   };
 
-  const goDashboard = () => {
-    setSelectedMemoId(null);
-    setSelectedFolderId(null);
-    setPageMode("dashboard");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleCreateFolder = async (event) => {
-    event.preventDefault();
-
-    if (!user) {
-      return;
+  const handleTagDraftKeyDown = (event) => {
+    if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      addTagsFromValue(tagDraft);
     }
 
-    const nextFolderName = folderName.trim();
-
-    if (!nextFolderName) {
-      return;
-    }
-
-    const isDuplicated = folders.some(
-      (folder) => folder.name.toLowerCase() === nextFolderName.toLowerCase()
-    );
-
-    if (isDuplicated) {
-      alert("이미 같은 이름의 폴더가 있어요.");
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from("folders")
-        .insert({
-          user_id: user.id,
-          name: nextFolderName,
-          is_default: false,
-        })
-        .select("*")
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      const newFolder = normalizeFolderFromDb(data);
-
-      setFolders((prev) => [...prev, newFolder]);
-      setFolderName("");
-      setIsFolderFormOpen(false);
-    } catch (error) {
-      console.error(error);
-      alert(error.message || "폴더를 추가하지 못했어요.");
+    if (event.key === "Backspace" && !tagDraft && draftTags.length > 0) {
+      setDraftTags((prev) => prev.slice(0, -1));
     }
   };
 
-  const handleRenameFolder = async (targetFolder, event) => {
-    event?.stopPropagation();
-
-    if (!user) {
-      return;
-    }
-
-    const nextName = window.prompt("폴더 이름을 입력하세요.", targetFolder.name);
-
-    if (!nextName) {
-      return;
-    }
-
-    const trimmedName = nextName.trim();
-
-    if (!trimmedName) {
-      return;
-    }
-
-    const isDuplicated = folders.some(
-      (folder) =>
-        folder.id !== targetFolder.id &&
-        folder.name.toLowerCase() === trimmedName.toLowerCase()
-    );
-
-    if (isDuplicated) {
-      alert("이미 같은 이름의 폴더가 있어요.");
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from("folders")
-        .update({ name: trimmedName })
-        .eq("id", targetFolder.id)
-        .eq("user_id", user.id)
-        .select("*")
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      const updatedFolder = normalizeFolderFromDb(data);
-
-      setFolders((prev) =>
-        prev.map((folder) =>
-          folder.id === updatedFolder.id ? updatedFolder : folder
-        )
-      );
-    } catch (error) {
-      console.error(error);
-      alert(error.message || "폴더 이름을 변경하지 못했어요.");
-    }
+  const removeDraftTag = (targetTag) => {
+    setDraftTags((prev) => prev.filter((tag) => tag !== targetTag));
   };
 
-  const handleDeleteFolder = async (targetFolder, event) => {
-    event?.stopPropagation();
-
-    if (!user || !defaultFolder) {
-      return;
-    }
-
-    if (targetFolder.isDefault) {
-      alert("기본 폴더는 삭제할 수 없어요.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `"${targetFolder.name}" 폴더를 삭제할까요?\n폴더 안의 메모는 기본 폴더로 이동됩니다.`
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      const now = new Date().toISOString();
-
-      const { error: moveError } = await supabase
-        .from("memos")
-        .update({
-          folder_id: defaultFolder.id,
-          updated_at: now,
-        })
-        .eq("user_id", user.id)
-        .eq("folder_id", targetFolder.id);
-
-      if (moveError) {
-        throw moveError;
-      }
-
-      const { error: deleteError } = await supabase
-        .from("folders")
-        .delete()
-        .eq("id", targetFolder.id)
-        .eq("user_id", user.id);
-
-      if (deleteError) {
-        throw deleteError;
-      }
-
-      setFolders((prev) =>
-        prev.filter((folder) => folder.id !== targetFolder.id)
-      );
-
-      setMemos((prev) =>
-        sortMemosByUpdatedAt(
-          prev.map((memo) =>
-            memo.folderId === targetFolder.id
-              ? {
-                  ...memo,
-                  folderId: defaultFolder.id,
-                  updatedAt: now,
-                }
-              : memo
-          )
-        )
-      );
-
-      if (selectedFolderId === targetFolder.id) {
-        setSelectedFolderId(null);
-        setPageMode("dashboard");
-      }
-    } catch (error) {
-      console.error(error);
-      alert(error.message || "폴더를 삭제하지 못했어요.");
-    }
-  };
-
-  const handleSubmit = async (event) => {
+  const handleSubmitMemo = async (event) => {
     event.preventDefault();
 
     if (!user) {
@@ -641,13 +548,7 @@ function App() {
     }
 
     const now = new Date().toISOString();
-    const parsedTags = parseTags(tagInput);
-    const nextFolderId = folderId || defaultFolder?.id || folders[0]?.id;
-
-    if (!nextFolderId) {
-      alert("폴더 정보를 불러오는 중이에요. 잠시 후 다시 시도해 주세요.");
-      return;
-    }
+    const finalTags = mergeTags(draftTags, parseTags(tagDraft));
 
     try {
       if (editingId) {
@@ -656,8 +557,7 @@ function App() {
           .update({
             title: title.trim() || "제목 없음",
             content: content.trim(),
-            tags: parsedTags,
-            folder_id: nextFolderId,
+            tags: finalTags,
             updated_at: now,
           })
           .eq("id", editingId)
@@ -678,20 +578,14 @@ function App() {
             )
           )
         );
-
-        setSelectedMemoId(editingId);
-        setSelectedFolderId(nextFolderId);
-        resetForm();
-        setPageMode("detail");
       } else {
         const { data, error } = await supabase
           .from("memos")
           .insert({
             user_id: user.id,
-            folder_id: nextFolderId,
             title: title.trim() || "제목 없음",
             content: content.trim(),
-            tags: parsedTags,
+            tags: finalTags,
             updated_at: now,
           })
           .select("*")
@@ -702,23 +596,18 @@ function App() {
         }
 
         const newMemo = normalizeMemoFromDb(data);
-
         setMemos((prev) => sortMemosByUpdatedAt([newMemo, ...prev]));
-        setSelectedMemoId(newMemo.id);
-        setSelectedFolderId(nextFolderId);
-        resetForm();
-        setPageMode("detail");
       }
+
+      closeMemoModal();
     } catch (error) {
       console.error(error);
       alert(error.message || "메모를 저장하지 못했어요.");
     }
   };
 
-  const handleDelete = async (id, event) => {
-    event?.stopPropagation();
-
-    if (!user) {
+  const handleDeleteMemo = async () => {
+    if (!user || !editingId) {
       return;
     }
 
@@ -732,103 +621,200 @@ function App() {
       const { error } = await supabase
         .from("memos")
         .delete()
-        .eq("id", id)
+        .eq("id", editingId)
         .eq("user_id", user.id);
 
       if (error) {
         throw error;
       }
 
-      setMemos((prev) => prev.filter((memo) => memo.id !== id));
-
-      if (editingId === id) {
-        resetForm();
-      }
-
-      if (selectedMemoId === id) {
-        setSelectedMemoId(null);
-        setPageMode(selectedFolderId ? "folder" : "dashboard");
-      }
+      setMemos((prev) => prev.filter((memo) => memo.id !== editingId));
+      closeMemoModal();
     } catch (error) {
       console.error(error);
       alert(error.message || "메모를 삭제하지 못했어요.");
     }
   };
 
-  const handleTagFilter = (tag, event) => {
-    event?.stopPropagation();
-
+  const handleTagClick = (tag) => {
     setActiveTag(tag);
-
-    if (selectedMemo?.folderId) {
-      setSelectedFolderId(selectedMemo.folderId);
-      setPageMode("folder");
-    } else if (selectedFolderId) {
-      setPageMode("folder");
-    } else {
-      setPageMode("dashboard");
-    }
-
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleCardKeyDown = (event, memoId) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      openDetailPage(memoId);
-    }
-  };
-
-  const clearSearch = () => {
-    setSearch("");
-    setIsSearchOpen(false);
+    setIsSidebarOpen(false);
   };
 
   const resetFilters = () => {
-    setActiveTag("all");
     setSearch("");
-    setIsSearchOpen(false);
+    setActiveTag("all");
   };
 
-  const formatDate = (dateString) => {
+  const formatRelativeTime = (dateString) => {
+    const targetTime = new Date(dateString).getTime();
+    const nowTime = Date.now();
+    const diffMinutes = Math.max(1, Math.floor((nowTime - targetTime) / 60000));
+
+    if (diffMinutes < 60) {
+      return `${diffMinutes}분 전`;
+    }
+
+    const diffHours = Math.floor(diffMinutes / 60);
+
+    if (diffHours < 24) {
+      return `${diffHours}시간 전`;
+    }
+
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays < 7) {
+      return `${diffDays}일 전`;
+    }
+
     return new Intl.DateTimeFormat("ko-KR", {
-      year: "numeric",
       month: "short",
       day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     }).format(new Date(dateString));
   };
 
-  const formatCompactDate = (dateString) => {
-    const date = new Date(dateString);
+  const sidebarContent = (
+    <>
+      <div className="flex items-center justify-between px-4 py-5">
+        <button
+          type="button"
+          onClick={resetFilters}
+          className="flex items-center gap-3 text-left"
+        >
+          <NoteIcon className="h-5 w-5 text-[var(--accent)]" />
+          <span className="text-base font-black tracking-[-0.04em] text-[var(--text-main)]">
+            LOVE & PEACE
+          </span>
+        </button>
 
-    const year = String(date.getFullYear()).slice(-2);
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
+        <button
+          type="button"
+          onClick={() => setIsSidebarOpen(false)}
+          className="grid h-10 w-10 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] md:hidden"
+          aria-label="메뉴 닫기"
+        >
+          <CloseIcon className="h-5 w-5" />
+        </button>
+      </div>
 
-    return `${year}${month}${day} ${hours}:${minutes}`;
-  };
+      <div className="px-3">
+        <button
+          type="button"
+          onClick={openCreateModal}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-[var(--accent)] text-sm font-black text-white transition hover:bg-[var(--accent-strong)]"
+        >
+          <PlusIcon className="h-4 w-4" />
+          새 메모
+        </button>
+      </div>
 
-  const formatDay = () => {
-    return new Intl.DateTimeFormat("ko-KR", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    }).format(new Date());
-  };
+      <nav className="mt-5 flex-1 overflow-y-auto px-3 pb-5">
+        <p className="px-1 text-xs font-bold text-[var(--text-soft)]">전체</p>
+
+        <button
+          type="button"
+          onClick={() => {
+            resetFilters();
+            setIsSidebarOpen(false);
+          }}
+          className={`mt-2 flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-black transition ${
+            activeTag === "all"
+              ? "bg-[var(--accent)] text-white"
+              : "text-[var(--text-main)] hover:bg-[var(--input-bg)]"
+          }`}
+        >
+          <span>모든 메모</span>
+          <span
+            className={`grid min-w-6 place-items-center rounded-full px-2 text-xs ${
+              activeTag === "all"
+                ? "bg-white/20 text-white"
+                : "bg-[var(--input-bg)] text-[var(--text-muted)]"
+            }`}
+          >
+            {memos.length}
+          </span>
+        </button>
+
+        <div className="mt-6">
+          <p className="mb-3 flex items-center gap-2 px-1 text-xs font-bold text-[var(--text-soft)]">
+            <TagIcon className="h-4 w-4" />
+            태그
+          </p>
+
+          {tagStats.length === 0 ? (
+            <p className="px-1 py-3 text-sm font-semibold leading-6 text-[var(--text-muted)]">
+              아직 태그가 없어요.
+              <br />
+              메모 저장 시 태그를 추가해보세요.
+            </p>
+          ) : (
+            <div className="space-y-1">
+              {tagStats.map((tag) => (
+                <button
+                  key={tag.name}
+                  type="button"
+                  onClick={() => handleTagClick(tag.name)}
+                  className={`flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-black transition ${
+                    activeTag === tag.name
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--text-main)] hover:bg-[var(--input-bg)]"
+                  }`}
+                >
+                  <span>#{tag.name}</span>
+                  <span
+                    className={`grid min-w-6 place-items-center rounded-full px-2 text-xs ${
+                      activeTag === tag.name
+                        ? "bg-white/20 text-white"
+                        : "bg-[var(--input-bg)] text-[var(--text-muted)]"
+                    }`}
+                  >
+                    {tag.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </nav>
+
+      <div className="border-t border-[var(--line)] p-3">
+        <button
+          type="button"
+          onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+          className="flex h-11 w-full items-center gap-3 rounded-[10px] px-3 text-left text-sm font-black text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
+        >
+          {isDark ? (
+            <SunIcon className="h-5 w-5" />
+          ) : (
+            <MoonIcon className="h-5 w-5" />
+          )}
+          {isDark ? "라이트 모드" : "다크 모드"}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="mt-1 flex h-10 w-full items-center gap-3 rounded-[10px] px-3 text-left text-xs font-bold text-[var(--text-soft)] transition hover:bg-[var(--input-bg)]"
+        >
+          <LogoutIcon className="h-4 w-4" />
+          로그아웃
+        </button>
+      </div>
+    </>
+  );
 
   if (isBooting) {
     return (
-      <main className="grid min-h-dvh place-items-center bg-[#EEF4FF] px-4 text-slate-950">
-        <section className="rounded-[28px] bg-white p-8 text-center shadow-[0_16px_40px_rgba(37,99,235,0.08)]">
-          <p className="text-sm font-black tracking-[0.2em] text-blue-400">
+      <main
+        style={themeVars}
+        className="grid min-h-dvh place-items-center bg-[var(--app-bg)] px-5 text-[var(--text-main)]"
+      >
+        <section className="rounded-[24px] border border-[var(--line)] bg-[var(--card-bg)] p-8 text-center shadow-[0_20px_60px_var(--shadow)]">
+          <p className="text-xs font-black tracking-[0.2em] text-[var(--accent)]">
             LOADING
           </p>
           <h1 className="mt-3 text-3xl font-black tracking-[-0.06em]">
-            Memo Space
+            Memo
           </h1>
         </section>
       </main>
@@ -837,9 +823,12 @@ function App() {
 
   if (!session || !user) {
     return (
-      <main className="grid min-h-dvh place-items-center bg-[#EEF4FF] px-4 py-8 text-slate-950">
-        <section className="w-full max-w-[440px] rounded-[28px] bg-white p-6 shadow-[0_16px_40px_rgba(37,99,235,0.08)] sm:p-8">
-          <p className="mb-3 text-xs font-black tracking-[0.2em] text-blue-400">
+      <main
+        style={themeVars}
+        className="grid min-h-dvh place-items-center bg-[var(--app-bg)] px-5 py-8 text-[var(--text-main)]"
+      >
+        <section className="w-full max-w-[440px] rounded-[26px] border border-[var(--line)] bg-[var(--card-bg)] p-6 shadow-[0_24px_70px_var(--shadow)] sm:p-8">
+          <p className="mb-3 text-xs font-black tracking-[0.2em] text-[var(--accent)]">
             PRIVATE MEMO APP
           </p>
 
@@ -849,36 +838,36 @@ function App() {
             Space
           </h1>
 
-          <p className="mt-4 text-sm font-semibold leading-6 text-slate-500">
+          <p className="mt-4 text-sm font-semibold leading-6 text-[var(--text-muted)]">
             Supabase 계정으로 로그인하면 PC와 모바일에서 같은 메모를 볼 수
             있어요.
           </p>
 
           <form onSubmit={handleAuthSubmit} className="mt-8">
-            <label className="block text-sm font-extrabold text-slate-900">
+            <label className="block text-sm font-extrabold">
               이메일
               <input
                 type="email"
                 value={authEmail}
                 onChange={(event) => setAuthEmail(event.target.value)}
                 placeholder="you@example.com"
-                className="mt-3 h-[54px] w-full rounded-xl border border-blue-950/10 bg-blue-50 px-4 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10"
+                className="mt-3 h-[54px] w-full rounded-xl border border-[var(--line)] bg-[var(--input-bg)] px-4 text-[var(--text-main)] outline-none transition placeholder:text-[var(--text-soft)] focus:border-[var(--accent)]"
               />
             </label>
 
-            <label className="mt-5 block text-sm font-extrabold text-slate-900">
+            <label className="mt-5 block text-sm font-extrabold">
               비밀번호
               <input
                 type="password"
                 value={authPassword}
                 onChange={(event) => setAuthPassword(event.target.value)}
                 placeholder="6자 이상"
-                className="mt-3 h-[54px] w-full rounded-xl border border-blue-950/10 bg-blue-50 px-4 text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10"
+                className="mt-3 h-[54px] w-full rounded-xl border border-[var(--line)] bg-[var(--input-bg)] px-4 text-[var(--text-main)] outline-none transition placeholder:text-[var(--text-soft)] focus:border-[var(--accent)]"
               />
             </label>
 
             {authMessage && (
-              <p className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-700">
+              <p className="mt-4 rounded-2xl bg-[var(--accent-soft)] p-4 text-sm font-semibold leading-6 text-[var(--accent-soft-text)]">
                 {authMessage}
               </p>
             )}
@@ -886,7 +875,7 @@ function App() {
             <button
               type="submit"
               disabled={isAuthLoading}
-              className="mt-6 h-14 w-full rounded-full bg-[#2563EB] font-extrabold text-white shadow-[0_14px_28px_rgba(37,99,235,0.22)] transition hover:-translate-y-0.5 hover:bg-[#1D4ED8] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-6 h-14 w-full rounded-full bg-[var(--accent)] font-black text-white transition hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isAuthLoading
                 ? "처리 중..."
@@ -904,7 +893,7 @@ function App() {
               );
               setAuthMessage("");
             }}
-            className="mt-4 w-full rounded-full border border-blue-950/10 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-blue-50"
+            className="mt-4 w-full rounded-full border border-[var(--line)] bg-transparent px-4 py-3 text-sm font-bold text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
           >
             {authMode === "signIn"
               ? "처음이라면 회원가입하기"
@@ -915,269 +904,113 @@ function App() {
     );
   }
 
-  if (isDataLoading && folders.length === 0) {
-    return (
-      <main className="grid min-h-dvh place-items-center bg-[#EEF4FF] px-4 text-slate-950">
-        <section className="rounded-[28px] bg-white p-8 text-center shadow-[0_16px_40px_rgba(37,99,235,0.08)]">
-          <p className="text-sm font-black tracking-[0.2em] text-blue-400">
-            SYNCING
-          </p>
-          <h1 className="mt-3 text-3xl font-black tracking-[-0.06em]">
-            데이터를 불러오는 중
-          </h1>
-        </section>
-      </main>
-    );
-  }
-
-  if (pageMode === "editor") {
-    return (
-      <main className="min-h-dvh bg-[#EEF4FF] text-slate-950">
-        <section className="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-4 py-5 sm:px-8 lg:px-10">
-          <header className="flex items-center justify-between gap-4 border-b border-blue-950/10 pb-5">
-            <button
-              type="button"
-              onClick={closeEditorPage}
-              className="rounded-full border border-blue-950/10 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-[#2563EB] hover:text-white"
-            >
-              ← 뒤로
-            </button>
-
-            <p className="text-sm font-bold text-slate-400">
-              {editingId ? "EDIT MEMO" : "NEW MEMO"}
-            </p>
-          </header>
-
-          <form onSubmit={handleSubmit} className="flex flex-1 flex-col py-8">
-            <div className="mb-8">
-              <h1 className="text-4xl font-black tracking-[-0.06em] text-slate-950 sm:text-5xl">
-                {editingId ? "메모 수정" : "메모 작성"}
-              </h1>
-              <p className="mt-3 text-slate-500">
-                제목, 내용, 해시태그와 폴더를 설정해서 메모를 정리하세요.
-              </p>
-            </div>
-
-            <label className="block text-sm font-extrabold text-slate-900">
-              제목
-              <input
-                type="text"
-                placeholder="메모 제목"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                className="mt-3 h-[56px] w-full rounded-xl border border-blue-950/10 bg-white px-4 text-lg font-bold text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-
-            <label className="mt-6 block text-sm font-extrabold text-slate-900">
-              폴더
-              <select
-                value={folderId}
-                onChange={(event) => setFolderId(event.target.value)}
-                className="mt-3 h-[56px] w-full rounded-xl border border-blue-950/10 bg-white px-4 text-slate-950 outline-none transition focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10"
-              >
-                {folders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>
-                    {folder.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="mt-6 block text-sm font-extrabold text-slate-900">
-              해시태그
-              <input
-                type="text"
-                placeholder="예: 업무, 아이디어, 중요"
-                value={tagInput}
-                onChange={(event) => setTagInput(event.target.value)}
-                className="mt-3 h-[56px] w-full rounded-xl border border-blue-950/10 bg-white px-4 text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-
-            {parseTags(tagInput).length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {parseTags(tagInput).map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full border border-[#2563EB] bg-[#2563EB] px-3 py-1 text-xs font-bold text-white"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <label className="mt-6 flex flex-1 flex-col text-sm font-extrabold text-slate-900">
-              내용
-              <textarea
-                placeholder="내용을 입력하세요"
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                className="mt-3 min-h-[360px] flex-1 resize-none rounded-xl border border-blue-950/10 bg-white p-5 text-base leading-8 text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10"
-              />
-            </label>
-
-            <div className="sticky bottom-0 mt-8 flex gap-3 border-t border-blue-950/10 bg-[#EEF4FF] py-5">
-              <button
-                type="button"
-                onClick={closeEditorPage}
-                className="h-14 flex-1 rounded-full border border-blue-950/10 bg-white font-extrabold text-slate-800 transition hover:bg-blue-50"
-              >
-                취소
-              </button>
-
-              <button
-                type="submit"
-                className="h-14 flex-[2] rounded-full bg-[#2563EB] font-extrabold text-white shadow-[0_14px_28px_rgba(37,99,235,0.22)] transition hover:-translate-y-0.5 hover:bg-[#1D4ED8]"
-              >
-                {editingId ? "수정 완료" : "메모 추가"}
-              </button>
-            </div>
-          </form>
-        </section>
-      </main>
-    );
-  }
-
-  if (pageMode === "detail" && selectedMemo) {
-    const memoFolder = folderMap[selectedMemo.folderId] || defaultFolder;
-
-    return (
-      <main className="min-h-dvh bg-[#EEF4FF] text-slate-950">
-        <section className="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-4 py-5 sm:px-8 lg:px-10">
-          <header className="flex items-center justify-between gap-4 border-b border-blue-950/10 pb-5">
-            <button
-              type="button"
-              onClick={closeDetailPage}
-              className="rounded-full border border-blue-950/10 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-[#2563EB] hover:text-white"
-            >
-              ← 목록
-            </button>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={(event) => openEditPage(selectedMemo, event)}
-                className="rounded-full border border-blue-950/10 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-[#2563EB] hover:text-white"
-              >
-                수정
-              </button>
-
-              <button
-                type="button"
-                onClick={(event) => handleDelete(selectedMemo.id, event)}
-                className="rounded-full border border-blue-950/10 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-slate-950 hover:text-white"
-              >
-                삭제
-              </button>
-            </div>
-          </header>
-
-          <article className="flex flex-1 flex-col py-8">
-            <div className="mb-6">
-              <p className="mb-3 text-xs font-black tracking-[0.2em] text-blue-400">
-                MEMO DETAIL
-              </p>
-
-              <h1 className="break-words text-4xl font-black leading-tight tracking-[-0.06em] text-slate-950 sm:text-6xl">
-                {selectedMemo.title}
-              </h1>
-
-              <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-slate-400">
-                {memoFolder && <span>폴더 {memoFolder.name}</span>}
-                <span>작성 {formatDate(selectedMemo.createdAt)}</span>
-                <span>수정 {formatDate(selectedMemo.updatedAt)}</span>
-              </div>
-            </div>
-
-            <div className="mb-8 flex flex-wrap gap-2">
-              {memoFolder && (
-                <button
-                  type="button"
-                  onClick={() => openFolderPage(memoFolder.id)}
-                  className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-sm font-bold text-blue-700 transition hover:border-[#2563EB] hover:bg-[#2563EB] hover:text-white"
-                >
-                  📁 {memoFolder.name}
-                </button>
-              )}
-
-              {selectedMemo.tags.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={(event) => handleTagFilter(tag, event)}
-                  className="rounded-full border border-blue-200 bg-white px-3 py-1.5 text-sm font-bold text-blue-700 transition hover:border-[#2563EB] hover:bg-[#2563EB] hover:text-white"
-                >
-                  #{tag}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex-1 rounded-[20px] border border-blue-950/10 bg-white p-5 shadow-[0_12px_30px_rgba(37,99,235,0.08)] sm:p-7">
-              <p className="whitespace-pre-wrap break-words text-lg leading-9 text-slate-700">
-                {selectedMemo.content || "내용 없음"}
-              </p>
-            </div>
-          </article>
-        </section>
-      </main>
-    );
-  }
-
-  const isFolderPage = pageMode === "folder" && selectedFolder;
-
   return (
-    <main className="min-h-dvh bg-[#EEF4FF] text-slate-950">
-      <section className="mx-auto w-full max-w-[1180px] px-4 py-6 sm:px-8 lg:px-10">
-        <header className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <p className="mb-2 text-sm font-black tracking-[-0.03em] text-slate-950">
-              Memo challenge
-            </p>
-            <p className="text-xs font-bold text-slate-400">{formatDay()}</p>
-          </div>
+    <main
+      style={themeVars}
+      className="min-h-dvh bg-[var(--app-bg)] text-[var(--text-main)]"
+    >
+      <aside className="fixed left-0 top-0 z-30 hidden h-dvh w-[260px] flex-col border-r border-[var(--line)] bg-[var(--sidebar-bg)] md:flex">
+        {sidebarContent}
+      </aside>
 
-          <div className="flex items-center gap-2">
+      {isSidebarOpen && (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(false)}
+            className="absolute inset-0 bg-[var(--overlay)]"
+            aria-label="사이드바 닫기"
+          />
+
+          <aside className="relative flex h-dvh w-[70vw] min-w-[300px] max-w-[520px] flex-col border-r border-[var(--line)] bg-[var(--sidebar-bg)] shadow-[20px_0_60px_var(--shadow)]">
+            {sidebarContent}
+          </aside>
+        </div>
+      )}
+
+      <section className="min-h-dvh md:pl-[260px]">
+        <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[var(--app-bg)]/90 px-4 py-4 backdrop-blur-xl md:px-6">
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setIsSearchOpen((prev) => !prev)}
-              className={`grid h-12 w-12 place-items-center rounded-full border text-lg font-black transition ${
-                isSearchOpen || search
-                  ? "border-[#2563EB] bg-[#2563EB] text-white"
-                  : "border-blue-950/10 bg-white text-slate-950 hover:border-[#2563EB] hover:text-[#2563EB]"
-              }`}
-              aria-label="검색 열기"
+              onClick={() => setIsSidebarOpen(true)}
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] md:hidden"
+              aria-label="메뉴 열기"
             >
-              ⌕
+              <MenuIcon className="h-7 w-7" />
+            </button>
+
+            <div className="relative flex-1">
+              <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--text-muted)]" />
+
+              <input
+                type="search"
+                placeholder="메모 검색..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="h-12 w-full rounded-[15px] border border-[var(--line)] bg-[var(--input-bg)] pl-11 pr-4 text-base font-semibold text-[var(--text-main)] outline-none transition placeholder:text-[var(--text-soft)] focus:border-[var(--accent)] md:h-10 md:text-sm"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-[var(--accent)] text-white transition hover:bg-[var(--accent-strong)] md:hidden"
+              aria-label="새 메모"
+            >
+              <PlusIcon className="h-8 w-8" />
             </button>
 
             <button
               type="button"
               onClick={() =>
-                openCreatePage(isFolderPage ? selectedFolder.id : null)
+                setTheme((prev) => (prev === "dark" ? "light" : "dark"))
               }
-              className="h-12 rounded-full bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-[0_12px_24px_rgba(37,99,235,0.2)] transition hover:-translate-y-0.5 hover:bg-[#1D4ED8]"
+              className="hidden h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] md:grid"
+              aria-label="테마 변경"
             >
-              메모 작성
+              {isDark ? (
+                <SunIcon className="h-5 w-5" />
+              ) : (
+                <MoonIcon className="h-5 w-5" />
+              )}
             </button>
+          </div>
 
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="hidden h-12 rounded-full border border-blue-950/10 bg-white px-4 text-sm font-extrabold text-slate-700 transition hover:bg-blue-50 sm:block"
-            >
-              로그아웃
-            </button>
+          <div className="mt-4 flex items-center gap-3">
+            {activeTag !== "all" && (
+              <button
+                type="button"
+                onClick={() => setActiveTag("all")}
+                className="inline-flex items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-sm font-bold text-[var(--accent-soft-text)]"
+              >
+                #{activeTag}
+                <CloseIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            <span className="text-sm font-bold text-[var(--text-muted)]">
+              {filteredMemos.length}개 메모
+            </span>
+
+            {(activeTag !== "all" || search) && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="ml-auto text-sm font-bold text-[var(--text-soft)] underline-offset-4 hover:underline"
+              >
+                필터 초기화
+              </button>
+            )}
           </div>
         </header>
 
         {dataError && (
-          <section className="mb-6 rounded-[20px] border border-blue-200 bg-white p-4 text-sm font-semibold text-blue-700">
+          <section className="mx-4 mt-5 rounded-[18px] border border-[var(--line)] bg-[var(--card-bg)] p-4 text-sm font-semibold text-[var(--accent-soft-text)] md:mx-6">
             {dataError}
             <button
               type="button"
-              onClick={() => loadWorkspaceData(user)}
+              onClick={() => loadMemos(user)}
               className="ml-3 font-black underline"
             >
               다시 시도
@@ -1185,422 +1018,182 @@ function App() {
           </section>
         )}
 
-        {(isSearchOpen || search) && (
-          <section className="mb-6 flex items-center gap-2">
-            <div className="relative flex-1">
-              <input
-                type="search"
-                autoFocus
-                placeholder="제목, 내용, 해시태그 검색"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="h-[52px] w-full rounded-full border border-blue-950/10 bg-white px-5 pr-12 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10"
-              />
-
-              {search && (
-                <button
-                  type="button"
-                  onClick={clearSearch}
-                  className="absolute right-3 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-blue-50 text-sm font-black text-blue-500 transition hover:bg-[#2563EB] hover:text-white"
-                  aria-label="검색어 지우기"
-                >
-                  ×
-                </button>
-              )}
+        <section className="px-4 py-6 md:px-6">
+          {isDataLoading && memos.length === 0 ? (
+            <div className="grid min-h-[320px] max-w-[1040px] place-items-center rounded-[18px] border border-[var(--line)] bg-[var(--card-bg)]">
+              <p className="text-sm font-black tracking-[0.2em] text-[var(--accent)]">
+                SYNCING
+              </p>
             </div>
-          </section>
-        )}
-
-        <section className="mb-8 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[28px] bg-white p-6 shadow-[0_16px_40px_rgba(37,99,235,0.08)] sm:p-8">
-            <div className="flex items-start justify-between gap-5">
+          ) : filteredMemos.length === 0 ? (
+            <div className="grid min-h-[420px] max-w-[1040px] place-items-center rounded-[18px] border border-dashed border-[var(--line)] bg-[var(--card-bg)] p-8 text-center">
               <div>
-                <h1 className="max-w-[520px] text-5xl font-black leading-[0.98] tracking-[-0.075em] text-slate-950 sm:text-6xl">
-                  Check Your
-                  <br />
-                  Memo Space
-                </h1>
-
-                <div className="mt-8 grid grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-sm font-black text-slate-400">Today</p>
-                    <p className="mt-2 text-3xl font-black tracking-[-0.06em] text-slate-950">
-                      {todayMemoCount}
-                      <span className="ml-1 text-base text-slate-400">
-                        notes
-                      </span>
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-black text-slate-400">Total</p>
-                    <p className="mt-2 text-3xl font-black tracking-[-0.06em] text-slate-950">
-                      {memos.length}
-                      <span className="ml-1 text-base text-slate-400">
-                        memos
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  openCreatePage(isFolderPage ? selectedFolder.id : null)
-                }
-                className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-blue-950/10 bg-blue-50 text-2xl font-black text-[#2563EB] transition hover:bg-[#2563EB] hover:text-white"
-                aria-label="새 메모 작성"
-              >
-                +
-              </button>
-            </div>
-
-            <div className="mt-10 grid gap-4 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() =>
-                  openCreatePage(isFolderPage ? selectedFolder.id : null)
-                }
-                className="rounded-[22px] bg-[#2563EB] p-5 text-left text-white transition hover:-translate-y-0.5 hover:bg-[#1D4ED8] hover:shadow-[0_14px_28px_rgba(37,99,235,0.24)]"
-              >
-                <div className="mb-10 flex items-center gap-3">
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#2563EB]">
-                    ✦
-                  </span>
-                  <div>
-                    <p className="font-black">Quick Memo</p>
-                    <p className="text-sm font-semibold text-white/65">
-                      바로 기록하기
-                    </p>
-                  </div>
-                </div>
-
-                <p className="text-4xl font-black tracking-[-0.06em]">Write</p>
-                <p className="mt-1 text-sm font-bold text-white/65">
-                  새 아이디어를 추가하세요
+                <p className="text-xs font-black tracking-[0.2em] text-[var(--accent)]">
+                  EMPTY
                 </p>
-              </button>
-
-              <div className="grid gap-4">
+                <h2 className="mt-3 text-3xl font-black tracking-[-0.06em]">
+                  표시할 메모가 없어요
+                </h2>
+                <p className="mt-3 text-sm font-semibold text-[var(--text-muted)]">
+                  새 메모를 작성하거나 검색어와 태그 필터를 변경해보세요.
+                </p>
                 <button
                   type="button"
-                  onClick={() => recentMemo && openDetailPage(recentMemo.id)}
-                  className="rounded-[22px] bg-[#BFD7FF] p-5 text-left text-slate-950 transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(37,99,235,0.12)]"
+                  onClick={openCreateModal}
+                  className="mt-6 h-12 rounded-full bg-[var(--accent)] px-6 font-black text-white transition hover:bg-[var(--accent-strong)]"
                 >
-                  <p className="text-sm font-black text-blue-900/55">
-                    Recent memo
-                  </p>
-                  <p className="mt-8 text-3xl font-black tracking-[-0.06em]">
-                    {recentMemo
-                      ? formatCompactDate(recentMemo.updatedAt).slice(-5)
-                      : "--:--"}
-                  </p>
-                  <p className="mt-1 truncate text-sm font-bold text-blue-950/60">
-                    {recentMemo ? recentMemo.title : "아직 메모가 없어요"}
-                  </p>
+                  새 메모 작성
                 </button>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-[22px] bg-[#DCEBFF] p-4">
-                    <p className="text-3xl font-black tracking-[-0.06em] text-slate-950">
-                      {memos.length}
-                    </p>
-                    <p className="mt-5 text-sm font-black text-blue-900/60">
-                      Saved
-                    </p>
-                  </div>
-
-                  <div className="rounded-[22px] bg-[#D7E2FF] p-4">
-                    <p className="text-3xl font-black tracking-[-0.06em] text-slate-950">
-                      {folders.length}
-                    </p>
-                    <p className="mt-5 text-sm font-black text-blue-900/60">
-                      Folders
-                    </p>
-                  </div>
-                </div>
               </div>
             </div>
-          </div>
-
-          <aside className="grid gap-5">
-            <section className="rounded-[28px] bg-white p-6 shadow-[0_16px_40px_rgba(37,99,235,0.08)]">
-              <div className="mb-5 flex items-center justify-between">
-                <p className="font-black text-slate-950">Tags</p>
-                <span className="text-sm font-black text-slate-400">
-                  {allTags.length}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveTag("all")}
-                  className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
-                    activeTag === "all"
-                      ? "border-[#2563EB] bg-[#2563EB] text-white"
-                      : "border-blue-950/10 bg-blue-50 text-slate-800 hover:border-[#2563EB] hover:text-[#2563EB]"
-                  }`}
-                >
-                  전체
-                </button>
-
-                {allTags.map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => setActiveTag(tag)}
-                    className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
-                      activeTag === tag
-                        ? "border-[#2563EB] bg-[#2563EB] text-white"
-                        : "border-blue-950/10 bg-blue-50 text-slate-800 hover:border-[#2563EB] hover:text-[#2563EB]"
-                    }`}
-                  >
-                    #{tag}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-[28px] bg-white p-6 shadow-[0_16px_40px_rgba(37,99,235,0.08)]">
-              <div className="mb-5 flex items-center justify-between">
-                <p className="font-black text-slate-950">Folders</p>
-
-                <button
-                  type="button"
-                  onClick={() => setIsFolderFormOpen((prev) => !prev)}
-                  className={`grid h-9 w-9 place-items-center rounded-full border text-lg font-black transition ${
-                    isFolderFormOpen
-                      ? "border-[#2563EB] bg-[#2563EB] text-white"
-                      : "border-blue-950/10 bg-blue-50 text-[#2563EB] hover:bg-[#2563EB] hover:text-white"
-                  }`}
-                  aria-label="폴더 생성"
-                >
-                  +
-                </button>
-              </div>
-
-              {isFolderFormOpen && (
-                <form onSubmit={handleCreateFolder} className="mb-4 flex gap-2">
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="새 폴더명"
-                    value={folderName}
-                    onChange={(event) => setFolderName(event.target.value)}
-                    className="h-11 min-w-0 flex-1 rounded-full border border-blue-950/10 bg-blue-50 px-4 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10"
-                  />
-
-                  <button
-                    type="submit"
-                    className="h-11 rounded-full bg-[#2563EB] px-4 text-sm font-extrabold text-white transition hover:bg-[#1D4ED8]"
-                  >
-                    추가
-                  </button>
-                </form>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                {folders.map((folder) => (
-                  <button
-                    key={folder.id}
-                    type="button"
-                    onClick={() => openFolderPage(folder.id)}
-                    className={`rounded-full border px-4 py-2 text-sm font-bold transition ${
-                      selectedFolderId === folder.id && pageMode === "folder"
-                        ? "border-[#2563EB] bg-[#2563EB] text-white"
-                        : "border-blue-950/10 bg-blue-50 text-slate-800 hover:border-[#2563EB] hover:text-[#2563EB]"
-                    }`}
-                  >
-                    {folder.name}
-                    <span className="ml-1 opacity-60">
-                      {folderMemoCounts[folder.id] || 0}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          </aside>
-        </section>
-
-        {isFolderPage ? (
-          <>
-            <section className="mb-4 flex items-end justify-between gap-4">
-              <div>
-                <button
-                  type="button"
-                  onClick={goDashboard}
-                  className="mb-3 rounded-full border border-blue-950/10 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-blue-50"
-                >
-                  ← 폴더 목록
-                </button>
-
-                <p className="text-xs font-black tracking-[0.2em] text-blue-400">
-                  FOLDER MEMOS
-                </p>
-                <h2 className="mt-1 max-w-[720px] truncate text-3xl font-black tracking-[-0.06em] text-slate-950">
-                  {selectedFolder.name}
-                  <span className="ml-2 text-lg text-slate-400">
-                    {filteredMemos.length}
-                  </span>
-                </h2>
-              </div>
-
-              {(activeTag !== "all" || search) && (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="rounded-full border border-blue-950/10 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-blue-50"
-                >
-                  필터 초기화
-                </button>
-              )}
-            </section>
-
-            {filteredMemos.length === 0 ? (
-              <section className="grid min-h-[340px] place-content-center rounded-[24px] border border-dashed border-blue-300 bg-white p-8 text-center">
-                <h2 className="text-3xl font-black tracking-[-0.05em] text-slate-950">
-                  이 폴더에 표시할 메모가 없어요
-                </h2>
-
-                <p className="mt-3 text-slate-500">
-                  새 메모를 작성하거나 검색어와 필터를 변경해보세요.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={() => openCreatePage(selectedFolder.id)}
-                  className="mx-auto mt-6 h-12 rounded-full bg-[#2563EB] px-6 font-extrabold text-white transition hover:bg-[#1D4ED8]"
-                >
-                  이 폴더에 메모 작성하기
-                </button>
-              </section>
-            ) : (
-              <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 max-md:gap-3">
-                {filteredMemos.map((memo) => (
-                  <article
-                    key={memo.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openDetailPage(memo.id)}
-                    onKeyDown={(event) => handleCardKeyDown(event, memo.id)}
-                    className="flex min-h-[248px] cursor-pointer flex-col rounded-[22px] border border-blue-950/10 bg-white p-6 outline-none transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(37,99,235,0.11)] focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10 max-md:min-h-0 max-md:rounded-[18px] max-md:p-4"
-                  >
-                    <div className="mb-4 min-w-0 max-md:mb-2">
-                      <h2 className="truncate text-2xl font-black leading-tight tracking-[-0.05em] text-slate-950 max-md:text-lg">
-                        {memo.title}
-                      </h2>
-                    </div>
-
-                    {memo.tags.length > 0 && (
-                      <div className="mb-4 flex flex-wrap gap-2 max-md:mb-2 max-md:max-h-7 max-md:overflow-hidden">
-                        {memo.tags.map((tag) => (
-                          <button
-                            key={tag}
-                            type="button"
-                            onClick={(event) => handleTagFilter(tag, event)}
-                            className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 transition hover:border-[#2563EB] hover:bg-[#2563EB] hover:text-white max-md:px-2.5 max-md:py-0.5 max-md:text-[11px]"
-                          >
-                            #{tag}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <p className="max-h-[168px] overflow-hidden whitespace-pre-wrap break-words leading-7 text-slate-600 max-md:[display:-webkit-box] max-md:[-webkit-box-orient:vertical] max-md:[-webkit-line-clamp:2] max-md:max-h-none max-md:whitespace-normal max-md:text-sm max-md:leading-6">
-                      {memo.content || "내용 없음"}
-                    </p>
-
-                    <div className="mt-auto pt-5 text-right text-xs font-bold text-slate-400 max-md:pt-3 max-md:text-[11px]">
-                      {formatCompactDate(memo.updatedAt)}
-                    </div>
-                  </article>
-                ))}
-              </section>
-            )}
-          </>
-        ) : (
-          <>
-            <section className="mb-4 flex items-end justify-between gap-4">
-              <div>
-                <p className="text-xs font-black tracking-[0.2em] text-blue-400">
-                  FOLDER LIST
-                </p>
-                <h2 className="mt-1 text-3xl font-black tracking-[-0.06em] text-slate-950">
-                  Folders
-                </h2>
-              </div>
-
-              {(activeTag !== "all" || search) && (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="rounded-full border border-blue-950/10 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition hover:bg-blue-50"
-                >
-                  필터 초기화
-                </button>
-              )}
-            </section>
-
-            <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 max-md:gap-3">
-              {folders.map((folder) => (
+          ) : (
+            <div className="grid max-w-[1040px] gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filteredMemos.map((memo) => (
                 <article
-                  key={folder.id}
+                  key={memo.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => openFolderPage(folder.id)}
-                  className="flex min-h-[210px] cursor-pointer flex-col rounded-[22px] border border-blue-950/10 bg-white p-6 outline-none transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(37,99,235,0.11)] focus:border-[#2563EB] focus:ring-4 focus:ring-blue-500/10 max-md:min-h-0 max-md:rounded-[18px] max-md:p-4"
+                  onClick={() => openEditModal(memo)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openEditModal(memo);
+                    }
+                  }}
+                  className="group flex min-h-[335px] cursor-pointer flex-col rounded-[24px] border border-[var(--line)] bg-[var(--card-bg)] p-8 outline-none transition hover:-translate-y-0.5 hover:shadow-[0_14px_36px_var(--shadow)] focus:border-[var(--accent)] md:min-h-[170px] md:rounded-[14px] md:p-4"
                 >
-                  <div className="mb-5 flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="mb-2 text-xs font-black tracking-[0.16em] text-blue-400">
-                        FOLDER
-                      </p>
-                      <h3 className="truncate text-2xl font-black tracking-[-0.05em] text-slate-950 max-md:text-xl">
-                        {folder.name}
-                      </h3>
-                    </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <h2 className="min-w-0 truncate text-3xl font-black tracking-[-0.05em] text-[var(--text-main)] md:text-xl">
+                      {memo.title}
+                    </h2>
 
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-blue-50 text-xl">
-                      📁
-                    </span>
+                    <PinIcon className="h-5 w-5 shrink-0 text-[var(--accent)] opacity-80 md:h-4 md:w-4" />
                   </div>
 
-                  <div className="mt-auto">
-                    <p className="text-4xl font-black tracking-[-0.06em] text-slate-950">
-                      {folderMemoCounts[folder.id] || 0}
-                      <span className="ml-2 text-base text-slate-400">
-                        memos
-                      </span>
-                    </p>
+                  <p className="mt-5 overflow-hidden whitespace-pre-wrap break-words text-[25px] font-semibold leading-9 text-[var(--text-muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:4] md:mt-3 md:text-sm md:leading-6 md:[-webkit-line-clamp:3]">
+                    {memo.content || "내용 없음"}
+                  </p>
 
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={(event) => handleRenameFolder(folder, event)}
-                        className="rounded-full border border-blue-950/10 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:border-[#2563EB] hover:bg-[#2563EB] hover:text-white"
-                      >
-                        이름변경
-                      </button>
-
-                      {!folder.isDefault && (
+                  <div className="mt-auto flex items-end gap-2 pt-6 md:pt-4">
+                    <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+                      {memo.tags.map((tag) => (
                         <button
+                          key={tag}
                           type="button"
-                          onClick={(event) => handleDeleteFolder(folder, event)}
-                          className="rounded-full border border-blue-950/10 bg-blue-50 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-950 hover:text-white"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleTagClick(tag);
+                          }}
+                          className="rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-lg font-bold text-[var(--accent-soft-text)] transition hover:bg-[var(--accent)] hover:text-white md:text-xs"
                         >
-                          삭제
+                          #{tag}
                         </button>
-                      )}
+                      ))}
                     </div>
+
+                    <span className="shrink-0 pb-1 text-lg font-bold text-[var(--text-soft)] md:text-xs">
+                      {formatRelativeTime(memo.updatedAt)}
+                    </span>
                   </div>
                 </article>
               ))}
-            </section>
-          </>
-        )}
+            </div>
+          )}
+        </section>
       </section>
+
+      {isMemoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--overlay)] px-4 pt-24 backdrop-blur-[2px] md:items-center md:pt-0">
+          <button
+            type="button"
+            onClick={closeMemoModal}
+            className="absolute inset-0"
+            aria-label="메모 모달 닫기"
+          />
+
+          <form
+            onSubmit={handleSubmitMemo}
+            className="relative flex h-[520px] w-full max-w-[760px] flex-col overflow-hidden rounded-[24px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] md:h-[390px] md:rounded-[14px]"
+          >
+            <div className="flex items-start gap-3 px-6 pt-6 md:px-5 md:pt-5">
+              <input
+                type="text"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="제목"
+                className="min-w-0 flex-1 bg-transparent text-3xl font-black tracking-[-0.05em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
+              />
+
+              <button
+                type="button"
+                onClick={closeMemoModal}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
+                aria-label="닫기"
+              >
+                <CloseIcon className="h-6 w-6 md:h-5 md:w-5" />
+              </button>
+            </div>
+
+            <textarea
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="메모 내용을 입력하세요..."
+              className="mt-6 flex-1 resize-none bg-transparent px-6 text-[28px] font-semibold leading-10 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:mt-5 md:px-5 md:text-lg md:leading-8"
+            />
+
+            <div className="border-t border-[var(--line)] px-6 py-4 md:px-5">
+              <div className="flex items-center gap-2">
+                <TagIcon className="h-6 w-6 shrink-0 text-[var(--text-muted)] md:h-5 md:w-5" />
+
+                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                  {draftTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => removeDraftTag(tag)}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-lg font-bold text-[var(--accent-soft-text)] md:text-sm"
+                    >
+                      #{tag}
+                      <CloseIcon className="h-3.5 w-3.5" />
+                    </button>
+                  ))}
+
+                  <input
+                    type="text"
+                    value={tagDraft}
+                    onChange={handleTagDraftChange}
+                    onKeyDown={handleTagDraftKeyDown}
+                    onBlur={() => addTagsFromValue(tagDraft)}
+                    placeholder="태그 추가..."
+                    className="h-9 min-w-[120px] flex-1 bg-transparent text-lg font-semibold text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-3">
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteMemo}
+                    className="grid h-12 w-12 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] md:h-10 md:w-10"
+                    aria-label="삭제"
+                  >
+                    <TrashIcon className="h-6 w-6 md:h-5 md:w-5" />
+                  </button>
+                )}
+
+                <button
+                  type="submit"
+                  className="inline-flex h-14 items-center gap-2 rounded-[16px] bg-[var(--accent)] px-7 text-xl font-black text-white transition hover:bg-[var(--accent-strong)] md:h-10 md:rounded-[10px] md:px-5 md:text-sm"
+                >
+                  <CheckIcon className="h-5 w-5" />
+                  저장
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   );
 }
