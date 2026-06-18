@@ -3,9 +3,10 @@
   "short_name": "Memo",
   "description": "Private memo web app",
   "start_url": ".",
+  "scope": ".",
   "display": "standalone",
-  "background_color": "#EEF4FF",
-  "theme_color": "#EEF4FF",
+  "background_color": "#F4F8FC",
+  "theme_color": "#F4F8FC",
   "icons": [
     {
       "src": "apple-touch-icon.png",
