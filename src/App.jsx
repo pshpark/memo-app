@@ -196,7 +196,6 @@ const mergeTags = (...tagGroups) => {
   return merged;
 };
 
-
 const parseMemoContentLines = (value) => {
   return value.split("\n").map((rawLine, index) => {
     const trimmedLine = rawLine.trimStart();
@@ -1500,19 +1499,7 @@ function App() {
                   {activeMemo.title}
                 </h1>
 
-                <button
-                  type="button"
-                  onClick={(event) => handleTogglePin(activeMemo, event)}
-                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
-                    activeMemo.isPinned
-                      ? "bg-[var(--accent)] text-white"
-                      : "text-[var(--accent)] hover:bg-[var(--input-bg)]"
-                  }`}
-                  aria-label={activeMemo.isPinned ? "고정 해제" : "상단 고정"}
-                  title={activeMemo.isPinned ? "고정 해제" : "상단 고정"}
-                >
-                  <PinIcon className="h-5 w-5" filled={activeMemo.isPinned} />
-                </button>
+                
 
                 <div className="relative shrink-0">
                   <button
@@ -1600,7 +1587,7 @@ function App() {
               onSubmit={handleSubmitMemo}
               className="relative flex h-[80dvh] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[80dvh] md:rounded-[14px]"
             >
-              <div className="flex items-center gap-3 border-b border-transparent px-5 pt-5 max-md:h-[72px] max-md:border-[var(--line)] max-md:pt-0">
+              <div className="flex items-center gap-2 border-b border-transparent px-5 pt-5 max-md:h-[72px] max-md:border-[var(--line)] max-md:pt-0">
                 <button
                   type="button"
                   onClick={closeMemoEditor}
@@ -1619,17 +1606,11 @@ function App() {
                 />
 
                 <button
-                  type="button"
-                  onClick={() => setDraftIsPinned((prev) => !prev)}
-                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
-                    draftIsPinned
-                      ? "bg-[var(--accent)] text-white"
-                      : "text-[var(--accent)] hover:bg-[var(--input-bg)]"
-                  }`}
-                  aria-label={draftIsPinned ? "고정 해제" : "상단 고정"}
-                  title={draftIsPinned ? "고정 해제" : "상단 고정"}
+                  type="submit"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 text-sm font-bold text-white transition hover:bg-[var(--accent-strong)] md:h-10 md:px-4"
                 >
-                  <PinIcon className="h-5 w-5" filled={draftIsPinned} />
+                  <CheckIcon className="h-4 w-4" />
+                  저장
                 </button>
 
                 <button
@@ -1650,12 +1631,12 @@ function App() {
                 className="mt-5 flex-1 resize-none bg-transparent px-5 text-base font-semibold leading-8 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] max-md:mt-0 max-md:px-5 max-md:py-5 md:text-lg"
               />
 
-              <div className="border-t border-[var(--line)] px-5 py-4 max-md:pb-[calc(16px+env(safe-area-inset-bottom))]">
-                <div className="mb-3 flex gap-2 overflow-x-auto">
+              <div className="border-t border-[var(--line)] px-5 py-3 max-md:pb-[calc(12px+env(safe-area-inset-bottom))]">
+                <div className="mb-2 flex gap-2 overflow-x-auto">
                   <button
                     type="button"
                     onClick={() => insertContentSnippet("- ")}
-                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-2.5 py-1 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
                   >
                     • 불릿
                   </button>
@@ -1663,7 +1644,7 @@ function App() {
                   <button
                     type="button"
                     onClick={() => insertContentSnippet("- [ ] ")}
-                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-2.5 py-1 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
                   >
                     ☐ 체크박스
                   </button>
@@ -1671,25 +1652,25 @@ function App() {
                   <button
                     type="button"
                     onClick={() => insertContentSnippet("- [x] ")}
-                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-3 py-1.5 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--input-bg)] px-2.5 py-1 text-xs font-bold text-[var(--text-muted)] transition hover:border-[var(--accent)] hover:text-[var(--accent)]"
                   >
                     ☑ 완료
                   </button>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <TagIcon className="h-5 w-5 shrink-0 text-[var(--text-muted)]" />
+                  <TagIcon className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />
 
-                  <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
                     {draftTags.map((tag) => (
                       <button
                         key={tag}
                         type="button"
                         onClick={() => removeDraftTag(tag)}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-sm font-bold text-[var(--accent-soft-text)]"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-0.5 text-xs font-bold text-[var(--accent-soft-text)]"
                       >
                         #{tag}
-                        <CloseIcon className="h-3.5 w-3.5" />
+                        <CloseIcon className="h-3 w-3" />
                       </button>
                     ))}
 
@@ -1700,30 +1681,9 @@ function App() {
                       onKeyDown={handleTagDraftKeyDown}
                       onBlur={() => addTagsFromValue(tagDraft)}
                       placeholder="태그 추가..."
-                      className="h-9 min-w-[120px] flex-1 bg-transparent text-sm font-semibold text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)]"
+                      className="h-8 min-w-[100px] flex-1 bg-transparent text-sm font-semibold text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)]"
                     />
                   </div>
-                </div>
-
-                <div className="mt-4 flex items-center justify-end gap-3">
-                  {editingId && (
-                    <button
-                      type="button"
-                      onClick={handleDeleteMemo}
-                      className="grid h-10 w-10 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
-                      aria-label="삭제"
-                    >
-                      <TrashIcon className="h-5 w-5" />
-                    </button>
-                  )}
-
-                  <button
-                    type="submit"
-                    className="inline-flex h-11 items-center gap-2 rounded-[12px] bg-[var(--accent)] px-5 text-sm font-bold text-white transition hover:bg-[var(--accent-strong)]"
-                  >
-                    <CheckIcon className="h-4 w-4" />
-                    저장
-                  </button>
                 </div>
               </div>
             </form>
