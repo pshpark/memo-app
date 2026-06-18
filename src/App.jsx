@@ -789,8 +789,8 @@ function App() {
           className="flex items-center gap-3 text-left"
         >
           <NoteIcon className="h-5 w-5 text-[var(--accent)]" />
-          <span className="text-base font-black tracking-[-0.04em] text-[var(--text-main)]">
-            메모
+          <span className="text-base font-bold tracking-[-0.04em] text-[var(--text-main)]">
+            LOVE & PEACE
           </span>
         </button>
 
@@ -808,7 +808,7 @@ function App() {
         <button
           type="button"
           onClick={openCreateEditor}
-          className="flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-[var(--accent)] text-sm font-black text-white transition hover:bg-[var(--accent-strong)]"
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-[var(--accent)] text-sm font-bold text-white transition hover:bg-[var(--accent-strong)]"
         >
           <PlusIcon className="h-4 w-4" />
           새 메모
@@ -824,7 +824,7 @@ function App() {
             resetFilters();
             closeSidebar();
           }}
-          className={`mt-2 flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-black transition ${
+          className={`mt-2 flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-bold transition ${
             activeTag === "all"
               ? "bg-[var(--accent)] text-white"
               : "text-[var(--text-main)] hover:bg-[var(--input-bg)]"
@@ -861,7 +861,7 @@ function App() {
                   key={tag.name}
                   type="button"
                   onClick={() => handleTagClick(tag.name)}
-                  className={`flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-black transition ${
+                  className={`flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-bold transition ${
                     activeTag === tag.name
                       ? "bg-[var(--accent)] text-white"
                       : "text-[var(--text-main)] hover:bg-[var(--input-bg)]"
@@ -890,7 +890,7 @@ function App() {
           onClick={() =>
             setTheme((prev) => (prev === "dark" ? "light" : "dark"))
           }
-          className="flex h-11 w-full items-center gap-3 rounded-[10px] px-3 text-left text-sm font-black text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
+          className="flex h-11 w-full items-center gap-3 rounded-[10px] px-3 text-left text-sm font-bold text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
         >
           {isDark ? (
             <SunIcon className="h-5 w-5" />
@@ -919,10 +919,10 @@ function App() {
         className="grid min-h-dvh place-items-center bg-[var(--app-bg)] px-5 text-[var(--text-main)]"
       >
         <section className="rounded-[24px] border border-[var(--line)] bg-[var(--card-bg)] p-8 text-center shadow-[0_20px_60px_var(--shadow)]">
-          <p className="text-xs font-black tracking-[0.2em] text-[var(--accent)]">
+          <p className="text-xs font-bold tracking-[0.2em] text-[var(--accent)]">
             LOADING
           </p>
-          <h1 className="mt-3 text-3xl font-black tracking-[-0.06em]">
+          <h1 className="mt-3 text-3xl font-bold tracking-[-0.06em]">
             Memo
           </h1>
         </section>
@@ -937,11 +937,11 @@ function App() {
         className="grid min-h-dvh place-items-center bg-[var(--app-bg)] px-5 py-8 text-[var(--text-main)]"
       >
         <section className="w-full max-w-[440px] rounded-[26px] border border-[var(--line)] bg-[var(--card-bg)] p-6 shadow-[0_24px_70px_var(--shadow)] sm:p-8">
-          <p className="mb-3 text-xs font-black tracking-[0.2em] text-[var(--accent)]">
+          <p className="mb-3 text-xs font-bold tracking-[0.2em] text-[var(--accent)]">
             PRIVATE MEMO APP
           </p>
 
-          <h1 className="text-5xl font-black leading-[0.95] tracking-[-0.075em]">
+          <h1 className="text-5xl font-bold leading-[0.95] tracking-[-0.075em]">
             Memo
             <br />
             Space
@@ -984,7 +984,7 @@ function App() {
             <button
               type="submit"
               disabled={isAuthLoading}
-              className="mt-6 h-14 w-full rounded-full bg-[var(--accent)] font-black text-white transition hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-6 h-14 w-full rounded-full bg-[var(--accent)] font-bold text-white transition hover:-translate-y-0.5 hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isAuthLoading
                 ? "처리 중..."
@@ -1130,7 +1130,7 @@ function App() {
             <button
               type="button"
               onClick={() => loadMemos(user)}
-              className="ml-3 font-black underline"
+              className="ml-3 font-bold underline"
             >
               다시 시도
             </button>
@@ -1140,17 +1140,17 @@ function App() {
         <section className="px-4 py-6 md:px-6">
           {isDataLoading && memos.length === 0 ? (
             <div className="grid min-h-[320px] max-w-[1040px] place-items-center rounded-[18px] border border-[var(--line)] bg-[var(--card-bg)]">
-              <p className="text-sm font-black tracking-[0.2em] text-[var(--accent)]">
+              <p className="text-sm font-bold tracking-[0.2em] text-[var(--accent)]">
                 SYNCING
               </p>
             </div>
           ) : filteredMemos.length === 0 ? (
             <div className="grid min-h-[420px] max-w-[1040px] place-items-center rounded-[18px] border border-dashed border-[var(--line)] bg-[var(--card-bg)] p-8 text-center">
               <div>
-                <p className="text-xs font-black tracking-[0.2em] text-[var(--accent)]">
+                <p className="text-xs font-bold tracking-[0.2em] text-[var(--accent)]">
                   EMPTY
                 </p>
-                <h2 className="mt-3 text-3xl font-black tracking-[-0.06em]">
+                <h2 className="mt-3 text-3xl font-bold tracking-[-0.06em]">
                   표시할 메모가 없어요
                 </h2>
                 <p className="mt-3 text-sm font-semibold text-[var(--text-muted)]">
@@ -1159,7 +1159,7 @@ function App() {
                 <button
                   type="button"
                   onClick={openCreateEditor}
-                  className="mt-6 h-12 rounded-full bg-[var(--accent)] px-6 font-black text-white transition hover:bg-[var(--accent-strong)]"
+                  className="mt-6 h-12 rounded-full bg-[var(--accent)] px-6 font-bold text-white transition hover:bg-[var(--accent-strong)]"
                 >
                   새 메모 작성
                 </button>
@@ -1186,7 +1186,7 @@ function App() {
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <h2 className="min-w-0 truncate text-lg font-black tracking-[-0.04em] text-[var(--text-main)] sm:text-xl">
+                    <h2 className="min-w-0 truncate text-lg font-bold tracking-[-0.04em] text-[var(--text-main)] sm:text-xl">
                       {memo.title}
                     </h2>
 
@@ -1265,7 +1265,7 @@ function App() {
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="제목"
-                className="min-w-0 flex-1 bg-transparent text-xl font-black tracking-[-0.04em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
+                className="min-w-0 flex-1 bg-transparent text-xl font-bold tracking-[-0.04em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
               />
 
               <button
@@ -1342,7 +1342,7 @@ function App() {
 
                 <button
                   type="submit"
-                  className="inline-flex h-11 items-center gap-2 rounded-[12px] bg-[var(--accent)] px-5 text-sm font-black text-white transition hover:bg-[var(--accent-strong)]"
+                  className="inline-flex h-11 items-center gap-2 rounded-[12px] bg-[var(--accent)] px-5 text-sm font-bold text-white transition hover:bg-[var(--accent-strong)]"
                 >
                   <CheckIcon className="h-4 w-4" />
                   저장

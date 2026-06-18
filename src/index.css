@@ -9,10 +9,12 @@
 @layer base {
   * {
     box-sizing: border-box;
+    letter-spacing: 0.3px;
   }
 
   body {
     @apply m-0 min-w-80 bg-white text-black font-sans antialiased;
+
   }
 
   button,
