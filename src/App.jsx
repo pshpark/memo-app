@@ -97,9 +97,18 @@ const TrashIcon = ({ className = "" }) => (
   </IconBase>
 );
 
-const PinIcon = ({ className = "" }) => (
-  <IconBase className={className} filled>
-    <path d="M14.9 2.6a1 1 0 0 0-1.4 0l-.8.8a1 1 0 0 0-.1 1.3l.3.4-4.1 4.1-1-.3a1.5 1.5 0 0 0-1.5.4l-.5.5a1 1 0 0 0 0 1.4l3 3-4.1 4.1a1 1 0 1 0 1.4 1.4l4.1-4.1 3 3a1 1 0 0 0 1.4 0l.5-.5a1.5 1.5 0 0 0 .4-1.5l-.3-1 4.1-4.1.4.3a1 1 0 0 0 1.3-.1l.8-.8a1 1 0 0 0 0-1.4l-6.9-6.8Z" />
+const PinIcon = ({ className = "", filled = false }) => (
+  <IconBase className={className} filled={filled}>
+    {filled ? (
+      <path d="M14.9 2.6a1 1 0 0 0-1.4 0l-.8.8a1 1 0 0 0-.1 1.3l.3.4-4.1 4.1-1-.3a1.5 1.5 0 0 0-1.5.4l-.5.5a1 1 0 0 0 0 1.4l3 3-4.1 4.1a1 1 0 1 0 1.4 1.4l4.1-4.1 3 3a1 1 0 0 0 1.4 0l.5-.5a1.5 1.5 0 0 0 .4-1.5l-.3-1 4.1-4.1.4.3a1 1 0 0 0 1.3-.1l.8-.8a1 1 0 0 0 0-1.4l-6.9-6.8Z" />
+    ) : (
+      <>
+        <path d="M14.5 4.5 19.5 9.5" />
+        <path d="m12.5 6.5-4 4-1.4-.4a1 1 0 0 0-1 .25l-.6.6 7.55 7.55.6-.6a1 1 0 0 0 .25-1l-.4-1.4 4-4" />
+        <path d="m9.5 14.5-4 4" />
+        <path d="m13 3 8 8" />
+      </>
+    )}
   </IconBase>
 );
 
@@ -116,12 +125,17 @@ const normalizeMemoFromDb = (memo) => ({
   title: memo.title || "제목 없음",
   content: memo.content || "",
   tags: Array.isArray(memo.tags) ? memo.tags : [],
+  isPinned: Boolean(memo.is_pinned),
   createdAt: memo.created_at,
   updatedAt: memo.updated_at || memo.created_at,
 });
 
-const sortMemosByUpdatedAt = (items) => {
+const sortMemos = (items) => {
   return [...items].sort((a, b) => {
+    if (a.isPinned !== b.isPinned) {
+      return a.isPinned ? -1 : 1;
+    }
+
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
   });
 };
@@ -199,13 +213,14 @@ function App() {
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("all");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
+  const [isMemoEditorOpen, setIsMemoEditorOpen] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [draftTags, setDraftTags] = useState([]);
   const [tagDraft, setTagDraft] = useState("");
+  const [draftIsPinned, setDraftIsPinned] = useState(false);
 
   const isDark = theme === "dark";
 
@@ -271,13 +286,13 @@ function App() {
   }, [theme, isDark]);
 
   useEffect(() => {
-    const shouldLockScroll = isMemoModalOpen || isSidebarOpen;
+    const shouldLockScroll = isMemoEditorOpen || isSidebarOpen;
     document.body.style.overflow = shouldLockScroll ? "hidden" : "";
 
     return () => {
       document.body.style.overflow = "";
     };
-  }, [isMemoModalOpen, isSidebarOpen]);
+  }, [isMemoEditorOpen, isSidebarOpen]);
 
   useEffect(() => {
     let mounted = true;
@@ -323,13 +338,14 @@ function App() {
           .from("memos")
           .select("*")
           .eq("user_id", targetUser.id)
+          .order("is_pinned", { ascending: false })
           .order("updated_at", { ascending: false });
 
         if (error) {
           throw error;
         }
 
-        setMemos(sortMemosByUpdatedAt((data || []).map(normalizeMemoFromDb)));
+        setMemos(sortMemos((data || []).map(normalizeMemoFromDb)));
       } catch (error) {
         console.error(error);
         setDataError(error.message || "데이터를 불러오지 못했어요.");
@@ -368,17 +384,19 @@ function App() {
   const filteredMemos = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
-    return memos.filter((memo) => {
-      const matchesSearch =
-        !keyword ||
-        memo.title.toLowerCase().includes(keyword) ||
-        memo.content.toLowerCase().includes(keyword) ||
-        memo.tags.some((tag) => tag.toLowerCase().includes(keyword));
+    return sortMemos(
+      memos.filter((memo) => {
+        const matchesSearch =
+          !keyword ||
+          memo.title.toLowerCase().includes(keyword) ||
+          memo.content.toLowerCase().includes(keyword) ||
+          memo.tags.some((tag) => tag.toLowerCase().includes(keyword));
 
-      const matchesTag = activeTag === "all" || memo.tags.includes(activeTag);
+        const matchesTag = activeTag === "all" || memo.tags.includes(activeTag);
 
-      return matchesSearch && matchesTag;
-    });
+        return matchesSearch && matchesTag;
+      })
+    );
   }, [memos, search, activeTag]);
 
   useEffect(() => {
@@ -393,21 +411,22 @@ function App() {
     setContent("");
     setDraftTags([]);
     setTagDraft("");
+    setDraftIsPinned(false);
   };
 
-  const closeMemoModal = () => {
-    setIsMemoModalOpen(false);
+  const closeMemoEditor = () => {
+    setIsMemoEditorOpen(false);
     resetEditor();
   };
 
   useEffect(() => {
-    if (!isMemoModalOpen) {
+    if (!isMemoEditorOpen) {
       return;
     }
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
-        closeMemoModal();
+        closeMemoEditor();
       }
     };
 
@@ -416,21 +435,22 @@ function App() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isMemoModalOpen]);
+  }, [isMemoEditorOpen]);
 
-  const openCreateModal = () => {
+  const openCreateEditor = () => {
     resetEditor();
-    setIsMemoModalOpen(true);
+    setIsMemoEditorOpen(true);
     setIsSidebarOpen(false);
   };
 
-  const openEditModal = (memo) => {
+  const openEditEditor = (memo) => {
     setEditingId(memo.id);
     setTitle(memo.title);
     setContent(memo.content);
     setDraftTags(memo.tags);
     setTagDraft("");
-    setIsMemoModalOpen(true);
+    setDraftIsPinned(memo.isPinned);
+    setIsMemoEditorOpen(true);
   };
 
   const handleAuthSubmit = async (event) => {
@@ -496,7 +516,7 @@ function App() {
     setSearch("");
     setActiveTag("all");
     setIsSidebarOpen(false);
-    closeMemoModal();
+    closeMemoEditor();
   };
 
   const addTagsFromValue = (value) => {
@@ -558,6 +578,7 @@ function App() {
             title: title.trim() || "제목 없음",
             content: content.trim(),
             tags: finalTags,
+            is_pinned: draftIsPinned,
             updated_at: now,
           })
           .eq("id", editingId)
@@ -572,7 +593,7 @@ function App() {
         const updatedMemo = normalizeMemoFromDb(data);
 
         setMemos((prev) =>
-          sortMemosByUpdatedAt(
+          sortMemos(
             prev.map((memo) =>
               memo.id === updatedMemo.id ? updatedMemo : memo
             )
@@ -586,6 +607,7 @@ function App() {
             title: title.trim() || "제목 없음",
             content: content.trim(),
             tags: finalTags,
+            is_pinned: draftIsPinned,
             updated_at: now,
           })
           .select("*")
@@ -596,10 +618,10 @@ function App() {
         }
 
         const newMemo = normalizeMemoFromDb(data);
-        setMemos((prev) => sortMemosByUpdatedAt([newMemo, ...prev]));
+        setMemos((prev) => sortMemos([newMemo, ...prev]));
       }
 
-      closeMemoModal();
+      closeMemoEditor();
     } catch (error) {
       console.error(error);
       alert(error.message || "메모를 저장하지 못했어요.");
@@ -629,10 +651,64 @@ function App() {
       }
 
       setMemos((prev) => prev.filter((memo) => memo.id !== editingId));
-      closeMemoModal();
+      closeMemoEditor();
     } catch (error) {
       console.error(error);
       alert(error.message || "메모를 삭제하지 못했어요.");
+    }
+  };
+
+  const handleTogglePin = async (memo, event) => {
+    event.stopPropagation();
+
+    if (!user) {
+      return;
+    }
+
+    const nextIsPinned = !memo.isPinned;
+
+    setMemos((prev) =>
+      sortMemos(
+        prev.map((item) =>
+          item.id === memo.id ? { ...item, isPinned: nextIsPinned } : item
+        )
+      )
+    );
+
+    try {
+      const { data, error } = await supabase
+        .from("memos")
+        .update({
+          is_pinned: nextIsPinned,
+        })
+        .eq("id", memo.id)
+        .eq("user_id", user.id)
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const updatedMemo = normalizeMemoFromDb(data);
+
+      setMemos((prev) =>
+        sortMemos(
+          prev.map((item) =>
+            item.id === updatedMemo.id ? updatedMemo : item
+          )
+        )
+      );
+    } catch (error) {
+      console.error(error);
+      setMemos((prev) =>
+        sortMemos(
+          prev.map((item) =>
+            item.id === memo.id ? { ...item, isPinned: memo.isPinned } : item
+          )
+        )
+      );
+      alert(error.message || "고정 상태를 변경하지 못했어요.");
     }
   };
 
@@ -683,7 +759,7 @@ function App() {
         >
           <NoteIcon className="h-5 w-5 text-[var(--accent)]" />
           <span className="text-base font-black tracking-[-0.04em] text-[var(--text-main)]">
-            LOVE & PEACE
+            메모
           </span>
         </button>
 
@@ -700,7 +776,7 @@ function App() {
       <div className="px-3">
         <button
           type="button"
-          onClick={openCreateModal}
+          onClick={openCreateEditor}
           className="flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-[var(--accent)] text-sm font-black text-white transition hover:bg-[var(--accent-strong)]"
         >
           <PlusIcon className="h-4 w-4" />
@@ -780,7 +856,9 @@ function App() {
       <div className="border-t border-[var(--line)] p-3">
         <button
           type="button"
-          onClick={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+          onClick={() =>
+            setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+          }
           className="flex h-11 w-full items-center gap-3 rounded-[10px] px-3 text-left text-sm font-black text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
         >
           {isDark ? (
@@ -954,7 +1032,7 @@ function App() {
 
             <button
               type="button"
-              onClick={openCreateModal}
+              onClick={openCreateEditor}
               className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-[var(--accent)] text-white transition hover:bg-[var(--accent-strong)] md:hidden"
               aria-label="새 메모"
             >
@@ -1039,7 +1117,7 @@ function App() {
                 </p>
                 <button
                   type="button"
-                  onClick={openCreateModal}
+                  onClick={openCreateEditor}
                   className="mt-6 h-12 rounded-full bg-[var(--accent)] px-6 font-black text-white transition hover:bg-[var(--accent-strong)]"
                 >
                   새 메모 작성
@@ -1053,29 +1131,45 @@ function App() {
                   key={memo.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => openEditModal(memo)}
+                  onClick={() => openEditEditor(memo)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      openEditModal(memo);
+                      openEditEditor(memo);
                     }
                   }}
-                  className="group flex min-h-[335px] cursor-pointer flex-col rounded-[24px] border border-[var(--line)] bg-[var(--card-bg)] p-8 outline-none transition hover:-translate-y-0.5 hover:shadow-[0_14px_36px_var(--shadow)] focus:border-[var(--accent)] md:min-h-[170px] md:rounded-[14px] md:p-4"
+                  className={`group flex min-h-[168px] cursor-pointer flex-col rounded-[18px] border bg-[var(--card-bg)] p-4 outline-none transition hover:-translate-y-0.5 hover:shadow-[0_14px_36px_var(--shadow)] focus:border-[var(--accent)] sm:min-h-[170px] sm:rounded-[14px] ${
+                    memo.isPinned
+                      ? "border-[var(--accent)]"
+                      : "border-[var(--line)]"
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <h2 className="min-w-0 truncate text-3xl font-black tracking-[-0.05em] text-[var(--text-main)] md:text-xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className="min-w-0 truncate text-lg font-black tracking-[-0.04em] text-[var(--text-main)] sm:text-xl">
                       {memo.title}
                     </h2>
 
-                    <PinIcon className="h-5 w-5 shrink-0 text-[var(--accent)] opacity-80 md:h-4 md:w-4" />
+                    <button
+                      type="button"
+                      onClick={(event) => handleTogglePin(memo, event)}
+                      className={`grid h-7 w-7 shrink-0 place-items-center rounded-full transition ${
+                        memo.isPinned
+                          ? "bg-[var(--accent)] text-white"
+                          : "text-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                      }`}
+                      aria-label={memo.isPinned ? "고정 해제" : "상단 고정"}
+                      title={memo.isPinned ? "고정 해제" : "상단 고정"}
+                    >
+                      <PinIcon className="h-4 w-4" filled={memo.isPinned} />
+                    </button>
                   </div>
 
-                  <p className="mt-5 overflow-hidden whitespace-pre-wrap break-words text-[25px] font-semibold leading-9 text-[var(--text-muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:4] md:mt-3 md:text-sm md:leading-6 md:[-webkit-line-clamp:3]">
+                  <p className="mt-3 overflow-hidden whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-[var(--text-muted)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]">
                     {memo.content || "내용 없음"}
                   </p>
 
-                  <div className="mt-auto flex items-end gap-2 pt-6 md:pt-4">
-                    <div className="flex min-w-0 flex-1 flex-wrap gap-2">
+                  <div className="mt-auto flex items-end gap-2 pt-4">
+                    <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
                       {memo.tags.map((tag) => (
                         <button
                           key={tag}
@@ -1084,14 +1178,14 @@ function App() {
                             event.stopPropagation();
                             handleTagClick(tag);
                           }}
-                          className="rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-lg font-bold text-[var(--accent-soft-text)] transition hover:bg-[var(--accent)] hover:text-white md:text-xs"
+                          className="rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-0.5 text-xs font-bold text-[var(--accent-soft-text)] transition hover:bg-[var(--accent)] hover:text-white"
                         >
                           #{tag}
                         </button>
                       ))}
                     </div>
 
-                    <span className="shrink-0 pb-1 text-lg font-bold text-[var(--text-soft)] md:text-xs">
+                    <span className="shrink-0 pb-1 text-xs font-bold text-[var(--text-soft)]">
                       {formatRelativeTime(memo.updatedAt)}
                     </span>
                   </div>
@@ -1102,35 +1196,58 @@ function App() {
         </section>
       </section>
 
-      {isMemoModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--overlay)] px-4 pt-24 backdrop-blur-[2px] md:items-center md:pt-0">
+      {isMemoEditorOpen && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--overlay)] px-4 pt-24 backdrop-blur-[2px] max-md:block max-md:bg-transparent max-md:p-0 max-md:backdrop-blur-0 md:items-center md:pt-0">
           <button
             type="button"
-            onClick={closeMemoModal}
-            className="absolute inset-0"
-            aria-label="메모 모달 닫기"
+            onClick={closeMemoEditor}
+            className="absolute inset-0 max-md:hidden"
+            aria-label="메모 에디터 닫기"
           />
 
           <form
             onSubmit={handleSubmitMemo}
-            className="relative flex h-[520px] w-full max-w-[760px] flex-col overflow-hidden rounded-[24px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] md:h-[390px] md:rounded-[14px]"
+            className="relative flex h-[520px] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[390px] md:rounded-[14px]"
           >
-            <div className="flex items-start gap-3 px-6 pt-6 md:px-5 md:pt-5">
+            <div className="flex items-center gap-3 border-b border-transparent px-5 pt-5 max-md:h-[72px] max-md:border-[var(--line)] max-md:pt-0">
+              <button
+                type="button"
+                onClick={closeMemoEditor}
+                className="hidden h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] max-md:grid"
+                aria-label="뒤로"
+              >
+                <CloseIcon className="h-5 w-5" />
+              </button>
+
               <input
                 type="text"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="제목"
-                className="min-w-0 flex-1 bg-transparent text-3xl font-black tracking-[-0.05em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
+                className="min-w-0 flex-1 bg-transparent text-xl font-black tracking-[-0.04em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
               />
 
               <button
                 type="button"
-                onClick={closeMemoModal}
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
+                onClick={() => setDraftIsPinned((prev) => !prev)}
+                className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition ${
+                  draftIsPinned
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-[var(--accent)] hover:bg-[var(--input-bg)]"
+                }`}
+                aria-label={draftIsPinned ? "고정 해제" : "상단 고정"}
+                title={draftIsPinned ? "고정 해제" : "상단 고정"}
+              >
+                <PinIcon className="h-5 w-5" filled={draftIsPinned} />
+              </button>
+
+              <button
+                type="button"
+                onClick={closeMemoEditor}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] max-md:hidden"
                 aria-label="닫기"
               >
-                <CloseIcon className="h-6 w-6 md:h-5 md:w-5" />
+                <CloseIcon className="h-5 w-5" />
               </button>
             </div>
 
@@ -1138,12 +1255,12 @@ function App() {
               value={content}
               onChange={(event) => setContent(event.target.value)}
               placeholder="메모 내용을 입력하세요..."
-              className="mt-6 flex-1 resize-none bg-transparent px-6 text-[28px] font-semibold leading-10 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:mt-5 md:px-5 md:text-lg md:leading-8"
+              className="mt-5 flex-1 resize-none bg-transparent px-5 text-base font-semibold leading-8 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] max-md:mt-0 max-md:px-5 max-md:py-5 md:text-lg"
             />
 
-            <div className="border-t border-[var(--line)] px-6 py-4 md:px-5">
+            <div className="border-t border-[var(--line)] px-5 py-4 max-md:pb-[calc(16px+env(safe-area-inset-bottom))]">
               <div className="flex items-center gap-2">
-                <TagIcon className="h-6 w-6 shrink-0 text-[var(--text-muted)] md:h-5 md:w-5" />
+                <TagIcon className="h-5 w-5 shrink-0 text-[var(--text-muted)]" />
 
                 <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
                   {draftTags.map((tag) => (
@@ -1151,7 +1268,7 @@ function App() {
                       key={tag}
                       type="button"
                       onClick={() => removeDraftTag(tag)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-lg font-bold text-[var(--accent-soft-text)] md:text-sm"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-sm font-bold text-[var(--accent-soft-text)]"
                     >
                       #{tag}
                       <CloseIcon className="h-3.5 w-3.5" />
@@ -1165,7 +1282,7 @@ function App() {
                     onKeyDown={handleTagDraftKeyDown}
                     onBlur={() => addTagsFromValue(tagDraft)}
                     placeholder="태그 추가..."
-                    className="h-9 min-w-[120px] flex-1 bg-transparent text-lg font-semibold text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-sm"
+                    className="h-9 min-w-[120px] flex-1 bg-transparent text-sm font-semibold text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)]"
                   />
                 </div>
               </div>
@@ -1175,18 +1292,18 @@ function App() {
                   <button
                     type="button"
                     onClick={handleDeleteMemo}
-                    className="grid h-12 w-12 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] md:h-10 md:w-10"
+                    className="grid h-10 w-10 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)]"
                     aria-label="삭제"
                   >
-                    <TrashIcon className="h-6 w-6 md:h-5 md:w-5" />
+                    <TrashIcon className="h-5 w-5" />
                   </button>
                 )}
 
                 <button
                   type="submit"
-                  className="inline-flex h-14 items-center gap-2 rounded-[16px] bg-[var(--accent)] px-7 text-xl font-black text-white transition hover:bg-[var(--accent-strong)] md:h-10 md:rounded-[10px] md:px-5 md:text-sm"
+                  className="inline-flex h-11 items-center gap-2 rounded-[12px] bg-[var(--accent)] px-5 text-sm font-black text-white transition hover:bg-[var(--accent-strong)]"
                 >
-                  <CheckIcon className="h-5 w-5" />
+                  <CheckIcon className="h-4 w-4" />
                   저장
                 </button>
               </div>
