@@ -1183,10 +1183,8 @@ function App() {
             PRIVATE MEMO APP
           </p>
 
-          <h1 className="text-5xl font-bold leading-[0.95] tracking-[-0.075em]">
-            Memo
-            <br />
-            Space
+          <h1 className="text-4xl font-bold leading-[0.95] tracking-[-0.075em]">
+            LOVE & PEACE
           </h1>
 
           <p className="mt-4 text-sm font-semibold leading-6 text-[var(--text-muted)]">
@@ -1487,7 +1485,7 @@ function App() {
           />
 
           {memoPanelMode === "view" && activeMemo ? (
-            <section className="relative flex h-[560px] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[430px] md:rounded-[14px]">
+            <section className="relative flex h-[80dvh] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[80dvh] md:rounded-[14px]">
               <div className="relative flex items-center gap-3 border-b border-[var(--line)] px-5 max-md:h-[72px] md:py-4">
                 <button
                   type="button"
@@ -1600,7 +1598,7 @@ function App() {
           ) : (
             <form
               onSubmit={handleSubmitMemo}
-              className="relative flex h-[520px] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[390px] md:rounded-[14px]"
+              className="relative flex h-[80dvh] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[80dvh] md:rounded-[14px]"
             >
               <div className="flex items-center gap-3 border-b border-transparent px-5 pt-5 max-md:h-[72px] max-md:border-[var(--line)] max-md:pt-0">
                 <button
