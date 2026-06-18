@@ -1030,7 +1030,7 @@ function App() {
           onClick={resetFilters}
           className="flex items-center gap-3 text-left"
         >
-          <NoteIcon className="h-5 w-5 text-[var(--accent)]" />
+          {/* <NoteIcon className="h-5 w-5 text-[var(--accent)]" /> */}
           <span className="text-base font-bold tracking-[-0.04em] text-[var(--text-main)]">
             LOVE & PEACE
           </span>
