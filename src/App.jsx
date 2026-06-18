@@ -212,7 +212,10 @@ function App() {
 
   const [search, setSearch] = useState("");
   const [activeTag, setActiveTag] = useState("all");
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarRendered, setIsSidebarRendered] = useState(false);
+
   const [isMemoEditorOpen, setIsMemoEditorOpen] = useState(false);
 
   const [editingId, setEditingId] = useState(null);
@@ -243,7 +246,7 @@ function App() {
             "--accent-deep": "#0F65A8",
             "--accent-soft": "#173D5C",
             "--accent-soft-text": "#8DD0FF",
-            "--overlay": "rgba(2, 8, 15, 0.66)",
+            "--overlay": "rgba(2, 8, 15, 0.58)",
             "--shadow": "rgba(0, 0, 0, 0.26)",
           }
         : {
@@ -262,11 +265,37 @@ function App() {
             "--accent-deep": "#0E4F86",
             "--accent-soft": "#DDF0FF",
             "--accent-soft-text": "#1474B8",
-            "--overlay": "rgba(17, 24, 39, 0.26)",
+            "--overlay": "rgba(17, 24, 39, 0.24)",
             "--shadow": "rgba(22, 35, 50, 0.14)",
           },
     [isDark]
   );
+
+  const openSidebar = () => {
+    setIsSidebarRendered(true);
+
+    window.requestAnimationFrame(() => {
+      setIsSidebarOpen(true);
+    });
+  };
+
+  const closeSidebar = () => {
+    setIsSidebarOpen(false);
+  };
+
+  useEffect(() => {
+    if (isSidebarOpen || !isSidebarRendered) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setIsSidebarRendered(false);
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [isSidebarOpen, isSidebarRendered]);
 
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
@@ -286,13 +315,13 @@ function App() {
   }, [theme, isDark]);
 
   useEffect(() => {
-    const shouldLockScroll = isMemoEditorOpen || isSidebarOpen;
+    const shouldLockScroll = isMemoEditorOpen || isSidebarRendered;
     document.body.style.overflow = shouldLockScroll ? "hidden" : "";
 
     return () => {
       document.body.style.overflow = "";
     };
-  }, [isMemoEditorOpen, isSidebarOpen]);
+  }, [isMemoEditorOpen, isSidebarRendered]);
 
   useEffect(() => {
     let mounted = true;
@@ -440,7 +469,7 @@ function App() {
   const openCreateEditor = () => {
     resetEditor();
     setIsMemoEditorOpen(true);
-    setIsSidebarOpen(false);
+    closeSidebar();
   };
 
   const openEditEditor = (memo) => {
@@ -515,7 +544,7 @@ function App() {
     setMemos([]);
     setSearch("");
     setActiveTag("all");
-    setIsSidebarOpen(false);
+    closeSidebar();
     closeMemoEditor();
   };
 
@@ -701,6 +730,7 @@ function App() {
       );
     } catch (error) {
       console.error(error);
+
       setMemos((prev) =>
         sortMemos(
           prev.map((item) =>
@@ -708,13 +738,14 @@ function App() {
           )
         )
       );
+
       alert(error.message || "고정 상태를 변경하지 못했어요.");
     }
   };
 
   const handleTagClick = (tag) => {
     setActiveTag(tag);
-    setIsSidebarOpen(false);
+    closeSidebar();
   };
 
   const resetFilters = () => {
@@ -765,7 +796,7 @@ function App() {
 
         <button
           type="button"
-          onClick={() => setIsSidebarOpen(false)}
+          onClick={closeSidebar}
           className="grid h-10 w-10 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] md:hidden"
           aria-label="메뉴 닫기"
         >
@@ -791,7 +822,7 @@ function App() {
           type="button"
           onClick={() => {
             resetFilters();
-            setIsSidebarOpen(false);
+            closeSidebar();
           }}
           className={`mt-2 flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-black transition ${
             activeTag === "all"
@@ -991,16 +1022,26 @@ function App() {
         {sidebarContent}
       </aside>
 
-      {isSidebarOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+      {isSidebarRendered && (
+        <div
+          className={`fixed inset-0 z-40 md:hidden ${
+            isSidebarOpen ? "pointer-events-auto" : "pointer-events-none"
+          }`}
+        >
           <button
             type="button"
-            onClick={() => setIsSidebarOpen(false)}
-            className="absolute inset-0 bg-[var(--overlay)]"
+            onClick={closeSidebar}
+            className={`absolute inset-0 bg-[var(--overlay)] backdrop-blur-[4px] transition-opacity duration-300 ease-out ${
+              isSidebarOpen ? "opacity-100" : "opacity-0"
+            }`}
             aria-label="사이드바 닫기"
           />
 
-          <aside className="relative flex h-dvh w-[70vw] min-w-[300px] max-w-[520px] flex-col border-r border-[var(--line)] bg-[var(--sidebar-bg)] shadow-[20px_0_60px_var(--shadow)]">
+          <aside
+            className={`relative flex h-dvh w-[70vw] min-w-[300px] max-w-[520px] flex-col border-r border-[var(--line)] bg-[var(--sidebar-bg)] shadow-[20px_0_60px_var(--shadow)] transition-transform duration-300 ease-out will-change-transform ${
+              isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
             {sidebarContent}
           </aside>
         </div>
@@ -1011,7 +1052,7 @@ function App() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setIsSidebarOpen(true)}
+              onClick={openSidebar}
               className="grid h-12 w-12 shrink-0 place-items-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--input-bg)] md:hidden"
               aria-label="메뉴 열기"
             >
@@ -1033,10 +1074,10 @@ function App() {
             <button
               type="button"
               onClick={openCreateEditor}
-              className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] bg-[var(--accent)] text-white transition hover:bg-[var(--accent-strong)] md:hidden"
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--accent)] text-white transition hover:bg-[var(--accent-strong)] md:hidden"
               aria-label="새 메모"
             >
-              <PlusIcon className="h-8 w-8" />
+              <PlusIcon className="h-6 w-6" />
             </button>
 
             <button
