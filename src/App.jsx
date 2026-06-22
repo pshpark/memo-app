@@ -3,6 +3,50 @@ import { supabase } from "./lib/supabaseClient";
 
 const THEME_STORAGE_KEY = "memo-space-theme";
 
+const GlobalScrollbarStyle = () => (
+  <style>{`
+    :root {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    }
+
+    *::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: var(--scrollbar-track);
+      border-radius: 999px;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background-color: var(--scrollbar-thumb);
+      border-radius: 999px;
+      border: 1.5px solid var(--scrollbar-track);
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: var(--scrollbar-thumb-hover);
+    }
+
+    *::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    textarea::-webkit-scrollbar,
+    input::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+  `}</style>
+);
+
 const IconBase = ({ children, className = "", filled = false }) => (
   <svg
     aria-hidden="true"
@@ -410,6 +454,9 @@ function App() {
             "--accent-soft-text": "#8DD0FF",
             "--overlay": "rgba(2, 8, 15, 0.58)",
             "--shadow": "rgba(0, 0, 0, 0.26)",
+            "--scrollbar-track": "rgba(234, 242, 250, 0.06)",
+            "--scrollbar-thumb": "rgba(99, 179, 237, 0.38)",
+            "--scrollbar-thumb-hover": "rgba(99, 179, 237, 0.64)",
           }
         : {
             "--app-bg": "#F4F8FC",
@@ -429,6 +476,9 @@ function App() {
             "--accent-soft-text": "#1474B8",
             "--overlay": "rgba(17, 24, 39, 0.24)",
             "--shadow": "rgba(22, 35, 50, 0.14)",
+            "--scrollbar-track": "rgba(14, 79, 134, 0.06)",
+            "--scrollbar-thumb": "rgba(27, 102, 169, 0.30)",
+            "--scrollbar-thumb-hover": "rgba(27, 102, 169, 0.52)",
           },
     [isDark]
   );
@@ -474,7 +524,12 @@ function App() {
     metaTheme.setAttribute("content", themeColor);
     document.documentElement.style.backgroundColor = themeColor;
     document.body.style.backgroundColor = themeColor;
-  }, [theme, isDark]);
+
+    Object.entries(themeVars).forEach(([key, value]) => {
+      document.documentElement.style.setProperty(key, value);
+      document.body.style.setProperty(key, value);
+    });
+  }, [theme, isDark, themeVars]);
 
   useEffect(() => {
     const shouldLockScroll = isMemoEditorOpen || isSidebarRendered;
@@ -1159,6 +1214,7 @@ function App() {
         style={themeVars}
         className="grid min-h-dvh place-items-center bg-[var(--app-bg)] px-5 text-[var(--text-main)]"
       >
+        <GlobalScrollbarStyle />
         <section className="rounded-[24px] border border-[var(--line)] bg-[var(--card-bg)] p-8 text-center shadow-[0_20px_60px_var(--shadow)]">
           <p className="text-xs font-bold tracking-[0.2em] text-[var(--accent)]">
             LOADING
@@ -1177,6 +1233,7 @@ function App() {
         style={themeVars}
         className="grid min-h-dvh place-items-center bg-[var(--app-bg)] px-5 py-8 text-[var(--text-main)]"
       >
+        <GlobalScrollbarStyle />
         <section className="w-full max-w-[440px] rounded-[26px] border border-[var(--line)] bg-[var(--card-bg)] p-6 shadow-[0_24px_70px_var(--shadow)] sm:p-8">
           <p className="mb-3 text-xs font-bold tracking-[0.2em] text-[var(--accent)]">
             PRIVATE MEMO APP
@@ -1257,6 +1314,8 @@ function App() {
       style={themeVars}
       className="min-h-dvh bg-[var(--app-bg)] text-[var(--text-main)]"
     >
+      <GlobalScrollbarStyle />
+
       <aside className="fixed left-0 top-0 z-30 hidden h-dvh w-[260px] flex-col border-r border-[var(--line)] bg-[var(--sidebar-bg)] md:flex">
         {sidebarContent}
       </aside>
@@ -1498,8 +1557,6 @@ function App() {
                 <h1 className="min-w-0 flex-1 truncate text-xl font-bold tracking-[-0.02em] text-[var(--text-main)] md:text-lg">
                   {activeMemo.title}
                 </h1>
-
-                
 
                 <div className="relative shrink-0">
                   <button
