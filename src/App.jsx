@@ -2,6 +2,59 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 
 const THEME_STORAGE_KEY = "memo-space-theme";
+const MEMO_IMAGE_BUCKET = "memo-images";
+const MAX_PASTED_IMAGE_SIZE = 10 * 1024 * 1024;
+
+const createImageId = () => {
+  return (
+    globalThis.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+};
+
+const getImageExtension = (file) => {
+  const extensionFromName = file.name?.match(/\.([a-zA-Z0-9]+)$/)?.[1];
+
+  if (extensionFromName) {
+    return extensionFromName.toLowerCase();
+  }
+
+  const extensionByMimeType = {
+    "image/avif": "avif",
+    "image/gif": "gif",
+    "image/heic": "heic",
+    "image/heif": "heif",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+  };
+
+  return extensionByMimeType[file.type] || "png";
+};
+
+const getClipboardImages = (clipboardData) => {
+  const imagesFromItems = Array.from(clipboardData?.items || [])
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter(Boolean);
+
+  if (imagesFromItems.length > 0) {
+    return imagesFromItems;
+  }
+
+  return Array.from(clipboardData?.files || []).filter((file) =>
+    file.type.startsWith("image/")
+  );
+};
+
+const getImageAltText = (file) => {
+  return (
+    file.name
+      ?.replace(/\.[^.]+$/, "")
+      .replace(/[\[\]\r\n]/g, " ")
+      .trim() || "붙여넣은 이미지"
+  );
+};
 
 const GlobalScrollbarStyle = () => (
   <style>{`
@@ -370,6 +423,19 @@ const parseMemoContentLines = (value) => {
   return value.split("\n").map((rawLine, index) => {
     const trimmedLine = rawLine.trimStart();
 
+    const imageMatch = trimmedLine.match(
+      /^!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)\s*$/
+    );
+
+    if (imageMatch) {
+      return {
+        id: `${index}-${rawLine}`,
+        type: "image",
+        alt: imageMatch[1] || "첨부 이미지",
+        src: imageMatch[2],
+      };
+    }
+
     const checkboxMatch = trimmedLine.match(/^- \[( |x|X)\]\s?(.*)$/);
 
     if (checkboxMatch) {
@@ -415,6 +481,18 @@ const MemoContentPreview = ({ content, maxLines = 4 }) => {
   return (
     <div className="mt-3 space-y-1.5 overflow-hidden text-sm font-semibold leading-6 text-[var(--text-muted)]">
       {parsedLines.map((line) => {
+        if (line.type === "image") {
+          return (
+            <img
+              key={line.id}
+              src={line.src}
+              alt={line.alt}
+              loading="lazy"
+              className="h-24 w-full rounded-xl border border-[var(--line)] bg-[var(--input-bg)] object-cover"
+            />
+          );
+        }
+
         if (line.type === "checkbox") {
           return (
             <div key={line.id} className="flex min-w-0 items-start gap-2">
@@ -466,6 +544,18 @@ const MemoContentDetail = ({ content }) => {
   return (
     <div className="text-base font-medium leading-8 text-[var(--text-main)] md:text-lg">
       {parsedLines.map((line) => {
+        if (line.type === "image") {
+          return (
+            <img
+              key={line.id}
+              src={line.src}
+              alt={line.alt}
+              loading="lazy"
+              className="my-3 max-h-[520px] w-full rounded-2xl border border-[var(--line)] bg-[var(--input-bg)] object-contain"
+            />
+          );
+        }
+
         if (line.type === "empty") {
           return <div key={line.id} className="h-3" />;
         }
@@ -559,9 +649,17 @@ function App() {
   const [draftTags, setDraftTags] = useState([]);
   const [tagDraft, setTagDraft] = useState("");
   const [draftIsPinned, setDraftIsPinned] = useState(false);
+  const [pendingImageUploads, setPendingImageUploads] = useState(0);
+  const [imageUploadError, setImageUploadError] = useState("");
   const contentInputRef = useRef(null);
+  const imageUploadSessionRef = useRef(0);
 
   const isDark = theme === "dark";
+  const isUploadingImages = pendingImageUploads > 0;
+  const draftImages = useMemo(
+    () => parseMemoContentLines(content).filter((line) => line.type === "image"),
+    [content]
+  );
 
   const themeVars = useMemo(
     () =>
@@ -782,12 +880,15 @@ function App() {
   }, [activeTag, tagStats]);
 
   const resetEditor = () => {
+    imageUploadSessionRef.current += 1;
     setEditingId(null);
     setTitle("");
     setContent("");
     setDraftTags([]);
     setTagDraft("");
     setDraftIsPinned(false);
+    setPendingImageUploads(0);
+    setImageUploadError("");
   };
 
   const closeMemoEditor = () => {
@@ -985,6 +1086,124 @@ function App() {
       textarea.focus();
       textarea.setSelectionRange(nextCursorPosition, nextCursorPosition);
     });
+  };
+
+  const insertContentBlock = (block) => {
+    const textarea = contentInputRef.current;
+    const start = textarea?.selectionStart ?? content.length;
+    const end = textarea?.selectionEnd ?? content.length;
+    const before = content.slice(0, start);
+    const after = content.slice(end);
+    const prefix = before && !before.endsWith("\n") ? "\n" : "";
+    const suffix = after && !after.startsWith("\n") ? "\n" : "";
+    const insertion = `${prefix}${block}${suffix}`;
+    const nextContent = `${before}${insertion}${after}`;
+    const nextCursorPosition = before.length + insertion.length;
+
+    setContent(nextContent);
+
+    window.requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCursorPosition, nextCursorPosition);
+    });
+  };
+
+  const handleContentPaste = async (event) => {
+    const images = getClipboardImages(event.clipboardData);
+
+    if (images.length === 0) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (!user) {
+      setImageUploadError("이미지를 첨부하려면 먼저 로그인해 주세요.");
+      return;
+    }
+
+    const uploadSessionId = imageUploadSessionRef.current;
+    const uploads = images.map((file) => {
+      const id = createImageId();
+
+      return {
+        file,
+        id,
+        marker: `[[이미지 업로드 중:${id}]]`,
+      };
+    });
+
+    insertContentBlock(uploads.map((upload) => upload.marker).join("\n"));
+    setImageUploadError("");
+    setPendingImageUploads((count) => count + uploads.length);
+
+    await Promise.all(
+      uploads.map(async ({ file, id, marker }) => {
+        let objectPath = "";
+        let didUpload = false;
+
+        try {
+          if (!file.type.startsWith("image/")) {
+            throw new Error("이미지 파일만 붙여넣을 수 있어요.");
+          }
+
+          if (file.size > MAX_PASTED_IMAGE_SIZE) {
+            throw new Error("이미지는 한 장당 10MB 이하만 첨부할 수 있어요.");
+          }
+
+          objectPath = `${user.id}/${Date.now()}-${id}.${getImageExtension(file)}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from(MEMO_IMAGE_BUCKET)
+            .upload(objectPath, file, {
+              cacheControl: "3600",
+              contentType: file.type,
+              upsert: false,
+            });
+
+          if (uploadError) {
+            throw uploadError;
+          }
+
+          didUpload = true;
+
+          const { data: publicUrlData } = supabase.storage
+            .from(MEMO_IMAGE_BUCKET)
+            .getPublicUrl(objectPath);
+          const publicUrl = publicUrlData?.publicUrl;
+
+          if (!publicUrl) {
+            throw new Error("업로드한 이미지 주소를 만들지 못했어요.");
+          }
+
+          if (imageUploadSessionRef.current !== uploadSessionId) {
+            await supabase.storage.from(MEMO_IMAGE_BUCKET).remove([objectPath]);
+            return;
+          }
+
+          const markdown = `![${getImageAltText(file)}](${publicUrl})`;
+          setContent((current) => current.replace(marker, markdown));
+        } catch (error) {
+          console.error(error);
+
+          if (didUpload && objectPath) {
+            await supabase.storage.from(MEMO_IMAGE_BUCKET).remove([objectPath]);
+          }
+
+          if (imageUploadSessionRef.current === uploadSessionId) {
+            setContent((current) => current.replace(marker, ""));
+            setImageUploadError(
+              error.message ||
+                `이미지 업로드에 실패했어요. '${MEMO_IMAGE_BUCKET}' 버킷 설정을 확인해 주세요.`
+            );
+          }
+        } finally {
+          if (imageUploadSessionRef.current === uploadSessionId) {
+            setPendingImageUploads((count) => Math.max(0, count - 1));
+          }
+        }
+      })
+    );
   };
 
   const toggleBoldSelection = () => {
@@ -1874,10 +2093,12 @@ function App() {
 
                 <button
                   type="submit"
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 text-sm font-bold text-white transition hover:bg-[var(--accent-strong)] md:h-10 md:px-4"
+                  disabled={isUploadingImages}
+                  aria-busy={isUploadingImages}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[var(--accent)] px-3 text-sm font-bold text-white transition hover:bg-[var(--accent-strong)] disabled:cursor-wait disabled:opacity-60 md:h-10 md:px-4"
                 >
                   <CheckIcon className="h-4 w-4" />
-                  저장
+                  {isUploadingImages ? `${pendingImageUploads}개 업로드 중` : "저장"}
                 </button>
 
                 <button
@@ -1895,9 +2116,45 @@ function App() {
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 onKeyDown={handleContentKeyDown}
-                placeholder="메모 내용을 입력하세요..."
+                onPaste={handleContentPaste}
+                placeholder="메모 내용을 입력하세요... 이미지도 붙여넣을 수 있어요."
                 className="mt-5 flex-1 resize-none bg-transparent px-5 text-base font-medium leading-8 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] max-md:mt-0 max-md:px-5 max-md:py-5 md:text-lg"
               />
+
+              {draftImages.length > 0 && (
+                <div
+                  className="flex gap-2 overflow-x-auto px-5 pb-3"
+                  aria-label="첨부된 이미지 미리보기"
+                >
+                  {draftImages.map((image) => (
+                    <img
+                      key={image.id}
+                      src={image.src}
+                      alt={image.alt}
+                      className="h-20 w-24 shrink-0 rounded-xl border border-[var(--line)] bg-[var(--input-bg)] object-cover"
+                    />
+                  ))}
+                </div>
+              )}
+
+              {isUploadingImages && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="px-5 pb-3 text-sm font-bold text-[var(--accent)]"
+                >
+                  이미지 {pendingImageUploads}개를 업로드하고 있어요...
+                </p>
+              )}
+
+              {imageUploadError && (
+                <p
+                  role="alert"
+                  className="px-5 pb-3 text-sm font-semibold text-red-500"
+                >
+                  {imageUploadError}
+                </p>
+              )}
 
               <div className="border-t border-[var(--line)] px-5 py-3 max-md:pb-[calc(12px+env(safe-area-inset-bottom))]">
                 <div className="mb-2 flex gap-2 overflow-x-auto">
