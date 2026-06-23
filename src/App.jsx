@@ -240,6 +240,132 @@ const mergeTags = (...tagGroups) => {
   return merged;
 };
 
+const removeInlineBoldMarkers = (value) => {
+  return String(value ?? "").replace(/\*\*([^*\n]+?)\*\*/g, "$1");
+};
+
+const getLineTextParts = (line) => {
+  const leading = line.match(/^\s*/)?.[0] ?? "";
+  const withoutLeading = line.slice(leading.length);
+
+  const checkboxMatch = withoutLeading.match(
+    /^(- \[(?: |x|X)\]\s?)(.*?)(\s*)$/
+  );
+
+  if (checkboxMatch) {
+    return {
+      leading,
+      prefix: checkboxMatch[1],
+      text: checkboxMatch[2],
+      trailing: checkboxMatch[3],
+    };
+  }
+
+  const bulletMatch = withoutLeading.match(/^([-*]\s+)(.*?)(\s*)$/);
+
+  if (bulletMatch) {
+    return {
+      leading,
+      prefix: bulletMatch[1],
+      text: bulletMatch[2],
+      trailing: bulletMatch[3],
+    };
+  }
+
+  const trailing = withoutLeading.match(/\s*$/)?.[0] ?? "";
+
+  return {
+    leading,
+    prefix: "",
+    text: withoutLeading.slice(0, withoutLeading.length - trailing.length),
+    trailing,
+  };
+};
+
+const isLineFullyBold = (line) => {
+  const { text } = getLineTextParts(line);
+  const trimmedText = text.trim();
+
+  if (!trimmedText) {
+    return true;
+  }
+
+  return (
+    trimmedText.startsWith("**") &&
+    trimmedText.endsWith("**") &&
+    trimmedText.length > 4
+  );
+};
+
+const isSelectionAlreadyBold = (selectedText, before, after) => {
+  if (!selectedText) {
+    return false;
+  }
+
+  if (before.endsWith("**") && after.startsWith("**")) {
+    return true;
+  }
+
+  const visibleLines = selectedText
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
+
+  if (visibleLines.length === 0) {
+    return false;
+  }
+
+  return visibleLines.every(isLineFullyBold);
+};
+
+const wrapLineWithBold = (line) => {
+  if (!line.trim()) {
+    return line;
+  }
+
+  const plainLine = removeInlineBoldMarkers(line);
+  const { leading, prefix, text, trailing } = getLineTextParts(plainLine);
+
+  if (!text.trim()) {
+    return plainLine;
+  }
+
+  const innerLeading = text.match(/^\s*/)?.[0] ?? "";
+  const innerTrailing = text.match(/\s*$/)?.[0] ?? "";
+  const coreText = text.slice(
+    innerLeading.length,
+    text.length - innerTrailing.length
+  );
+
+  if (!coreText) {
+    return plainLine;
+  }
+
+  return `${leading}${prefix}${innerLeading}**${coreText}**${innerTrailing}${trailing}`;
+};
+
+const wrapSelectionWithBold = (selectedText) => {
+  return selectedText.split("\n").map(wrapLineWithBold).join("\n");
+};
+
+const renderInlineFormattedText = (text) => {
+  const parts = String(text ?? "").split(/(\*\*[^*\n]+?\*\*)/g);
+
+  return parts.map((part, index) => {
+    const isBold =
+      part.startsWith("**") && part.endsWith("**") && part.length > 4;
+
+    if (isBold) {
+      return (
+        <strong key={`${part}-${index}`} className="font-extrabold text-current">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+
+    return <span key={`${part}-${index}`}>{part}</span>;
+  });
+};
+
 const parseMemoContentLines = (value) => {
   return value.split("\n").map((rawLine, index) => {
     const trimmedLine = rawLine.trimStart();
@@ -307,7 +433,7 @@ const MemoContentPreview = ({ content, maxLines = 4 }) => {
                   line.checked ? "text-[var(--text-soft)] line-through" : ""
                 }`}
               >
-                {line.text}
+                {renderInlineFormattedText(line.text)}
               </span>
             </div>
           );
@@ -317,14 +443,16 @@ const MemoContentPreview = ({ content, maxLines = 4 }) => {
           return (
             <div key={line.id} className="flex min-w-0 items-start gap-2">
               <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]" />
-              <span className="min-w-0 truncate">{line.text}</span>
+              <span className="min-w-0 truncate">
+                {renderInlineFormattedText(line.text)}
+              </span>
             </div>
           );
         }
 
         return (
           <p key={line.id} className="whitespace-pre-wrap">
-            {line.text}
+            {renderInlineFormattedText(line.text)}
           </p>
         );
       })}
@@ -336,7 +464,7 @@ const MemoContentDetail = ({ content }) => {
   const parsedLines = parseMemoContentLines(content || "내용 없음");
 
   return (
-    <div className="text-base font-semibold leading-8 text-[var(--text-main)] md:text-lg">
+    <div className="text-base font-medium leading-8 text-[var(--text-main)] md:text-lg">
       {parsedLines.map((line) => {
         if (line.type === "empty") {
           return <div key={line.id} className="h-3" />;
@@ -360,7 +488,7 @@ const MemoContentDetail = ({ content }) => {
                   line.checked ? "text-[var(--text-soft)] line-through" : ""
                 }`}
               >
-                {line.text}
+                {renderInlineFormattedText(line.text)}
               </span>
             </div>
           );
@@ -370,14 +498,16 @@ const MemoContentDetail = ({ content }) => {
           return (
             <div key={line.id} className="flex min-w-0 items-start gap-3">
               <span className="mt-[13px] h-2 w-2 shrink-0 rounded-full bg-[var(--accent)]" />
-              <span className="min-w-0 break-words">{line.text}</span>
+              <span className="min-w-0 break-words">
+                {renderInlineFormattedText(line.text)}
+              </span>
             </div>
           );
         }
 
         return (
           <p key={line.id} className="whitespace-pre-wrap break-words">
-            {line.text}
+            {renderInlineFormattedText(line.text)}
           </p>
         );
       })}
@@ -855,6 +985,86 @@ function App() {
       textarea.focus();
       textarea.setSelectionRange(nextCursorPosition, nextCursorPosition);
     });
+  };
+
+  const toggleBoldSelection = () => {
+    const textarea = contentInputRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    const start = textarea.selectionStart ?? content.length;
+    const end = textarea.selectionEnd ?? content.length;
+
+    const before = content.slice(0, start);
+    const selected = content.slice(start, end);
+    const after = content.slice(end);
+
+    let replaceStart = start;
+    let replaceEnd = end;
+    let targetText = selected;
+
+    const shouldExpandExternalBold =
+      selected && before.endsWith("**") && after.startsWith("**");
+
+    if (shouldExpandExternalBold) {
+      replaceStart = start - 2;
+      replaceEnd = end + 2;
+      targetText = content.slice(replaceStart, replaceEnd);
+    }
+
+    const shouldUnbold = isSelectionAlreadyBold(selected, before, after);
+
+    let nextText = "";
+    let nextSelectionStart = replaceStart;
+    let nextSelectionEnd = replaceEnd;
+
+    if (shouldUnbold) {
+      nextText = removeInlineBoldMarkers(targetText);
+      nextSelectionEnd = replaceStart + nextText.length;
+    } else if (!selected) {
+      nextText = "****";
+      nextSelectionStart = start + 2;
+      nextSelectionEnd = start + 2;
+
+      const nextContent = `${before}${nextText}${after}`;
+
+      setContent(nextContent);
+
+      window.requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+      });
+
+      return;
+    } else {
+      nextText = wrapSelectionWithBold(selected);
+      nextSelectionStart = start;
+      nextSelectionEnd = start + nextText.length;
+    }
+
+    const nextContent = `${content.slice(0, replaceStart)}${nextText}${content.slice(
+      replaceEnd
+    )}`;
+
+    setContent(nextContent);
+
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+    });
+  };
+
+  const handleContentKeyDown = (event) => {
+    if (event.nativeEvent?.isComposing) {
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
+      event.preventDefault();
+      toggleBoldSelection();
+    }
   };
 
   const handleSubmitMemo = async (event) => {
@@ -1684,6 +1894,7 @@ function App() {
                 ref={contentInputRef}
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
+                onKeyDown={handleContentKeyDown}
                 placeholder="메모 내용을 입력하세요..."
                 className="mt-5 flex-1 resize-none bg-transparent px-5 text-base font-medium leading-8 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] max-md:mt-0 max-md:px-5 max-md:py-5 md:text-lg"
               />
