@@ -1685,7 +1685,7 @@ function App() {
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 placeholder="메모 내용을 입력하세요..."
-                className="mt-5 flex-1 resize-none bg-transparent px-5 text-base font-semibold leading-8 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] max-md:mt-0 max-md:px-5 max-md:py-5 md:text-lg"
+                className="mt-5 flex-1 resize-none bg-transparent px-5 text-base font-medium leading-8 text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] max-md:mt-0 max-md:px-5 max-md:py-5 md:text-lg"
               />
 
               <div className="border-t border-[var(--line)] px-5 py-3 max-md:pb-[calc(12px+env(safe-area-inset-bottom))]">
