@@ -51,7 +51,9 @@ const getImageAltText = (file) => {
   return (
     file.name
       ?.replace(/\.[^.]+$/, "")
-      .replace(/[\[\]\r\n]/g, " ")
+      .replaceAll("[", " ")
+      .replaceAll("]", " ")
+      .replace(/[\r\n]/g, " ")
       .trim() || "붙여넣은 이미지"
   );
 };
@@ -115,13 +117,6 @@ const IconBase = ({ children, className = "", filled = false }) => (
   </svg>
 );
 
-const NoteIcon = ({ className = "" }) => (
-  <IconBase className={className}>
-    <path d="M6 3.5h8.2L19 8.3V20a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 20V5a1.5 1.5 0 0 1 1-1.5Z" />
-    <path d="M14 3.5V8h4.5" />
-  </IconBase>
-);
-
 const SearchIcon = ({ className = "" }) => (
   <IconBase className={className}>
     <circle cx="11" cy="11" r="6.5" />
@@ -181,16 +176,6 @@ const MenuIcon = ({ className = "" }) => (
     <path d="M5 7h14" />
     <path d="M5 12h14" />
     <path d="M5 17h14" />
-  </IconBase>
-);
-
-const TrashIcon = ({ className = "" }) => (
-  <IconBase className={className}>
-    <path d="M4 7h16" />
-    <path d="M10 11v6" />
-    <path d="M14 11v6" />
-    <path d="M6 7l1 14h10l1-14" />
-    <path d="M9 7V4h6v3" />
   </IconBase>
 );
 
@@ -473,6 +458,43 @@ const parseMemoContentLines = (value) => {
   });
 };
 
+const getMemoImageObjectPaths = (content, userId) => {
+  if (!content || !userId) {
+    return [];
+  }
+
+  const publicPathPrefix = `/storage/v1/object/public/${MEMO_IMAGE_BUCKET}/`;
+  const objectPaths = new Set();
+
+  parseMemoContentLines(content).forEach((line) => {
+    if (line.type !== "image") {
+      return;
+    }
+
+    try {
+      const imageUrl = new URL(line.src);
+      const prefixIndex = imageUrl.pathname.indexOf(publicPathPrefix);
+
+      if (prefixIndex === -1) {
+        return;
+      }
+
+      const encodedObjectPath = imageUrl.pathname.slice(
+        prefixIndex + publicPathPrefix.length
+      );
+      const objectPath = decodeURIComponent(encodedObjectPath);
+
+      if (objectPath.startsWith(`${userId}/`) && objectPath.length > userId.length + 1) {
+        objectPaths.add(objectPath);
+      }
+    } catch {
+      // 외부 이미지나 올바르지 않은 URL은 Storage 정리 대상에서 제외한다.
+    }
+  });
+
+  return Array.from(objectPaths);
+};
+
 const MemoContentPreview = ({ content, maxLines = 4 }) => {
   const parsedLines = parseMemoContentLines(content || "내용 없음")
     .filter((line) => line.type !== "empty")
@@ -619,6 +641,7 @@ function App() {
   const [dataError, setDataError] = useState("");
 
   const [memos, setMemos] = useState([]);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
@@ -653,6 +676,7 @@ function App() {
   const [imageUploadError, setImageUploadError] = useState("");
   const contentInputRef = useRef(null);
   const imageUploadSessionRef = useRef(0);
+  const loadedUserIdRef = useRef(null);
 
   const isDark = theme === "dark";
   const isUploadingImages = pendingImageUploads > 0;
@@ -760,6 +784,16 @@ function App() {
   }, [theme, isDark, themeVars]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
     const shouldLockScroll = isMemoEditorOpen || isSidebarRendered;
     document.body.style.overflow = shouldLockScroll ? "hidden" : "";
 
@@ -768,38 +802,8 @@ function App() {
     };
   }, [isMemoEditorOpen, isSidebarRendered]);
 
-  useEffect(() => {
-    let mounted = true;
-
-    const boot = async () => {
-      const { data } = await supabase.auth.getSession();
-
-      if (!mounted) {
-        return;
-      }
-
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      setIsBooting(false);
-    };
-
-    boot();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
   const loadMemos = useCallback(
-    async (targetUser = user) => {
+    async (targetUser) => {
       if (!targetUser) {
         return;
       }
@@ -827,19 +831,62 @@ function App() {
         setIsDataLoading(false);
       }
     },
-    [user]
+    []
   );
 
   useEffect(() => {
-    if (!user) {
+    let mounted = true;
+
+    const loadMemosForNewUser = (nextUser) => {
+      if (!nextUser || loadedUserIdRef.current === nextUser.id) {
+        return;
+      }
+
+      loadedUserIdRef.current = nextUser.id;
+      void loadMemos(nextUser);
+    };
+
+    const boot = async () => {
+      const { data } = await supabase.auth.getSession();
+
+      if (!mounted) {
+        return;
+      }
+
+      const initialUser = data.session?.user ?? null;
+
+      setSession(data.session);
+      setUser(initialUser);
+      setIsBooting(false);
+      loadMemosForNewUser(initialUser);
+    };
+
+    void boot();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUser = nextSession?.user ?? null;
+
+      setSession(nextSession);
+      setUser(nextUser);
+
+      if (nextUser) {
+        loadMemosForNewUser(nextUser);
+        return;
+      }
+
+      loadedUserIdRef.current = null;
       setMemos([]);
       setSearch("");
       setActiveTag("all");
-      return;
-    }
+    });
 
-    loadMemos(user);
-  }, [user, loadMemos]);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [loadMemos]);
 
   const tagStats = useMemo(() => {
     const countMap = new Map();
@@ -855,6 +902,11 @@ function App() {
       .sort((a, b) => a.name.localeCompare(b.name, "ko-KR"));
   }, [memos]);
 
+  const selectedTag =
+    activeTag === "all" || tagStats.some((tag) => tag.name === activeTag)
+      ? activeTag
+      : "all";
+
   const filteredMemos = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
@@ -866,20 +918,15 @@ function App() {
           memo.content.toLowerCase().includes(keyword) ||
           memo.tags.some((tag) => tag.toLowerCase().includes(keyword));
 
-        const matchesTag = activeTag === "all" || memo.tags.includes(activeTag);
+        const matchesTag =
+          selectedTag === "all" || memo.tags.includes(selectedTag);
 
         return matchesSearch && matchesTag;
       })
     );
-  }, [memos, search, activeTag]);
+  }, [memos, search, selectedTag]);
 
-  useEffect(() => {
-    if (activeTag !== "all" && !tagStats.some((tag) => tag.name === activeTag)) {
-      setActiveTag("all");
-    }
-  }, [activeTag, tagStats]);
-
-  const resetEditor = () => {
+  const resetEditor = useCallback(() => {
     imageUploadSessionRef.current += 1;
     setEditingId(null);
     setTitle("");
@@ -889,15 +936,15 @@ function App() {
     setDraftIsPinned(false);
     setPendingImageUploads(0);
     setImageUploadError("");
-  };
+  }, []);
 
-  const closeMemoEditor = () => {
+  const closeMemoEditor = useCallback(() => {
     setIsMemoEditorOpen(false);
     setMemoPanelMode("edit");
     setActiveMemo(null);
     setIsMemoActionsOpen(false);
     resetEditor();
-  };
+  }, [resetEditor]);
 
   useEffect(() => {
     if (!isMemoEditorOpen) {
@@ -915,7 +962,7 @@ function App() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isMemoEditorOpen]);
+  }, [isMemoEditorOpen, closeMemoEditor]);
 
   const openCreateEditor = () => {
     resetEditor();
@@ -1235,33 +1282,25 @@ function App() {
 
     const shouldUnbold = isSelectionAlreadyBold(selected, before, after);
 
-    let nextText = "";
-    let nextSelectionStart = replaceStart;
-    let nextSelectionEnd = replaceEnd;
-
-    if (shouldUnbold) {
-      nextText = removeInlineBoldMarkers(targetText);
-      nextSelectionEnd = replaceStart + nextText.length;
-    } else if (!selected) {
-      nextText = "****";
-      nextSelectionStart = start + 2;
-      nextSelectionEnd = start + 2;
-
-      const nextContent = `${before}${nextText}${after}`;
+    if (!selected) {
+      const nextContent = `${before}****${after}`;
+      const nextCursorPosition = start + 2;
 
       setContent(nextContent);
 
       window.requestAnimationFrame(() => {
         textarea.focus();
-        textarea.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+        textarea.setSelectionRange(nextCursorPosition, nextCursorPosition);
       });
 
       return;
-    } else {
-      nextText = wrapSelectionWithBold(selected);
-      nextSelectionStart = start;
-      nextSelectionEnd = start + nextText.length;
     }
+
+    const nextText = shouldUnbold
+      ? removeInlineBoldMarkers(targetText)
+      : wrapSelectionWithBold(selected);
+    const nextSelectionStart = shouldUnbold ? replaceStart : start;
+    const nextSelectionEnd = nextSelectionStart + nextText.length;
 
     const nextContent = `${content.slice(0, replaceStart)}${nextText}${content.slice(
       replaceEnd
@@ -1369,6 +1408,18 @@ function App() {
       return;
     }
 
+    const memoToDelete =
+      memos.find((memo) => memo.id === editingId) || activeMemo;
+    const imagePathsUsedByOtherMemos = new Set(
+      memos
+        .filter((memo) => memo.id !== editingId)
+        .flatMap((memo) => getMemoImageObjectPaths(memo.content, user.id))
+    );
+    const imagePathsToDelete = getMemoImageObjectPaths(
+      memoToDelete?.content,
+      user.id
+    ).filter((path) => !imagePathsUsedByOtherMemos.has(path));
+
     try {
       const { error } = await supabase
         .from("memos")
@@ -1379,12 +1430,33 @@ function App() {
       if (error) {
         throw error;
       }
-
-      setMemos((prev) => prev.filter((memo) => memo.id !== editingId));
-      closeMemoEditor();
     } catch (error) {
       console.error(error);
       alert(error.message || "메모를 삭제하지 못했어요.");
+      return;
+    }
+
+    setMemos((prev) => prev.filter((memo) => memo.id !== editingId));
+    closeMemoEditor();
+
+    if (imagePathsToDelete.length === 0) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.storage
+        .from(MEMO_IMAGE_BUCKET)
+        .remove(imagePathsToDelete);
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error(error);
+      alert(
+        error.message ||
+          "메모는 삭제했지만 첨부 이미지를 Storage에서 삭제하지 못했어요."
+      );
     }
   };
 
@@ -1480,8 +1552,10 @@ function App() {
 
   const formatRelativeTime = (dateString) => {
     const targetTime = new Date(dateString).getTime();
-    const nowTime = Date.now();
-    const diffMinutes = Math.max(1, Math.floor((nowTime - targetTime) / 60000));
+    const diffMinutes = Math.max(
+      1,
+      Math.floor((currentTime - targetTime) / 60000)
+    );
 
     if (diffMinutes < 60) {
       return `${diffMinutes}분 전`;
@@ -1513,7 +1587,6 @@ function App() {
           onClick={resetFilters}
           className="flex items-center gap-3 text-left"
         >
-          {/* <NoteIcon className="h-5 w-5 text-[var(--accent)]" /> */}
           <span className="text-base font-bold tracking-[-0.04em] text-[var(--text-main)]">
             LOVE & PEACE
           </span>
@@ -1550,7 +1623,7 @@ function App() {
             closeSidebar();
           }}
           className={`mt-2 flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-bold transition ${
-            activeTag === "all"
+            selectedTag === "all"
               ? "bg-[var(--accent)] text-white"
               : "text-[var(--text-main)] hover:bg-[var(--input-bg)]"
           }`}
@@ -1558,7 +1631,7 @@ function App() {
           <span>모든 메모</span>
           <span
             className={`grid min-w-6 place-items-center rounded-full px-2 text-xs ${
-              activeTag === "all"
+              selectedTag === "all"
                 ? "bg-white/20 text-white"
                 : "bg-[var(--input-bg)] text-[var(--text-muted)]"
             }`}
@@ -1587,7 +1660,7 @@ function App() {
                   type="button"
                   onClick={() => handleTagClick(tag.name)}
                   className={`flex h-10 w-full items-center justify-between rounded-[10px] px-3 text-left text-sm font-bold transition ${
-                    activeTag === tag.name
+                    selectedTag === tag.name
                       ? "bg-[var(--accent)] text-white"
                       : "text-[var(--text-main)] hover:bg-[var(--input-bg)]"
                   }`}
@@ -1595,7 +1668,7 @@ function App() {
                   <span>#{tag.name}</span>
                   <span
                     className={`grid min-w-6 place-items-center rounded-full px-2 text-xs ${
-                      activeTag === tag.name
+                      selectedTag === tag.name
                         ? "bg-white/20 text-white"
                         : "bg-[var(--input-bg)] text-[var(--text-muted)]"
                     }`}
@@ -1824,13 +1897,13 @@ function App() {
           </div>
 
           <div className="mt-4 flex items-center gap-3">
-            {activeTag !== "all" && (
+            {selectedTag !== "all" && (
               <button
                 type="button"
                 onClick={() => setActiveTag("all")}
                 className="inline-flex items-center gap-1 rounded-full border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 text-sm font-bold text-[var(--accent-soft-text)]"
               >
-                #{activeTag}
+                #{selectedTag}
                 <CloseIcon className="h-3.5 w-3.5" />
               </button>
             )}
@@ -1839,7 +1912,7 @@ function App() {
               {filteredMemos.length}개 메모
             </span>
 
-            {(activeTag !== "all" || search) && (
+            {(selectedTag !== "all" || search) && (
               <button
                 type="button"
                 onClick={resetFilters}
