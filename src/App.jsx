@@ -60,45 +60,15 @@ const getImageAltText = (file) => {
 
 const GlobalScrollbarStyle = () => (
   <style>{`
-    :root {
-      scrollbar-width: thin;
-      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-    }
-
-    * {
-      scrollbar-width: thin;
-      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-    }
-
-    *::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-
-    *::-webkit-scrollbar-track {
-      background: var(--scrollbar-track);
-      border-radius: 999px;
-    }
-
-    *::-webkit-scrollbar-thumb {
-      background-color: var(--scrollbar-thumb);
-      border-radius: 999px;
-      border: 1.5px solid var(--scrollbar-track);
-    }
-
-    *::-webkit-scrollbar-thumb:hover {
-      background-color: var(--scrollbar-thumb-hover);
-    }
-
-    *::-webkit-scrollbar-corner {
-      background: transparent;
-    }
-
+    :root { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
+    * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track); }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 999px; }
+    *::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb); border-radius: 999px; border: 1.5px solid var(--scrollbar-track); }
+    *::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
+    *::-webkit-scrollbar-corner { background: transparent; }
     textarea::-webkit-scrollbar,
-    input::-webkit-scrollbar {
-      width: 5px;
-      height: 5px;
-    }
+    input::-webkit-scrollbar { width: 5px; height: 5px; }
   `}</style>
 );
 
