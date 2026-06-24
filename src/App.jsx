@@ -2131,7 +2131,7 @@ function App() {
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="제목"
-                  className="min-w-0 flex-1 bg-transparent text-xl font-bold tracking-[-0.04em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
+                  className="min-w-0 flex-1 bg-transparent text-xl font-bold tracking-[-0.02em] text-[var(--text-main)] outline-none placeholder:text-[var(--text-soft)] md:text-lg"
                 />
 
                 <button
