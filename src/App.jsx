@@ -2116,7 +2116,7 @@ function App() {
               onSubmit={handleSubmitMemo}
               className="relative flex h-[80dvh] w-full max-w-[760px] flex-col overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--modal-bg)] shadow-[0_30px_90px_var(--shadow)] max-md:fixed max-md:inset-0 max-md:h-dvh max-md:max-w-none max-md:rounded-none max-md:border-0 max-md:shadow-none md:h-[80dvh] md:rounded-[14px]"
             >
-              <div className="flex items-center gap-2 border-b border-transparent px-5 pt-5 max-md:h-[72px] max-md:border-[var(--line)] max-md:pt-0">
+              <div className="flex items-center gap-3 border-b border-transparent px-5 pt-5 max-md:h-[72px] max-md:border-[var(--line)] max-md:pt-0">
                 <button
                   type="button"
                   onClick={closeMemoEditor}
